@@ -27,13 +27,14 @@ struct Event {
     Payload payload;
 };
 template<class E>
-concept DynamicGraphEngine = requires(E& e, VertexId u, VertexId v,
+concept DynamicGraphEngine = requires(E& e, VertexId u, VertexId v, std::size_t max_k,
                                       Handle h, Weight w, Expiry x, Removal r) {
     { e.set_vertex(u, w) } -> std::same_as<Status>;
     { e.insert_edge(h, u, v, x) } -> std::same_as<Status>;
     { e.extend_ttl(h, x) } -> std::same_as<Status>;
     { e.delete_edge(h, r) } -> std::same_as<Status>;
     { e.connected(u, v) } -> std::same_as<bool>;
+    { e.component_vertices(u, max_k) } -> std::same_as<std::vector<VertexId>>;
     { e.stats(u) } -> std::same_as<Result<Aggregate>>;
 };
 ```
@@ -55,11 +56,15 @@ Stage the batch on a bounded mutation journal or equivalent isolated writer view
 * **ETT treap node.** {left,right,parent,priority,tie_id,tour_size:u32, vertex:u32, handle:u64, self_count,sum_count:u32, local_flags,subtree_flags:u8}. Level zero also stores self and subtree fraud weights in parallel arrays. Permanent self-loops count once. Both dart orientations count zero. The two flag bits mark an exact-level tree dart and an incident exact-level non-tree candidate. Pull ORs local and children's bits. Generate repeatable priorities from a stored deterministic seed and allocation sequence. Reroot by rotating the tour using split and merge. Cut at the two dart positions, remove them and rejoin the outside pieces.
 * **HDT edge.** {u,v,level:u32, tree:bool} plus indexed dart pairs per participating level and endpoint adjacency membership for non-tree edges. With configured V, allocate levels 0 through floor(log2 V) lazily. Each level-i tree spans at most floor(V/2^i) vertices. On tree deletion cut all occupied levels. Descend from the removed level, select the smaller split by root count, use flag-guided searches to promote exact-level internal tree edges first, then internal non-tree edges. The first crossing edge becomes a tree edge only in forests 0 through i. Higher levels stay split. Assert promotion bounds in tests. Represent graph self-edges separately as redundant structural edges to avoid top-level singleton promotion.
 
+All engine views, including a time-selected offline leaf, expose component_vertices(u, max_k). The seed is first when present and space permits. Enumeration order beyond the seed may depend on the index. Active degree counts every live incident deduplicated key exactly once, including a self-edge and any shadow edge.
+
 ## Binary durability and service boundary
 
 WAL methods are append_batch(records), sync_through(lsn), read_suffix(after), truncate_after(lsn) and recover(snapshot). Errors are status values. A frame is one atomic leader batch. All integers are little-endian, packed field-by-field. Header is magic "FRE1" (4 bytes), format:u16=1, flags:u16=0, payload_bytes:u32, count:u32, epoch:u64, first_lsn:u64. Payload consists of count records, each length:u32 followed by tenant:u64, event_time_ms:u64, tag:u8, has_source:u8, optional producer:u64 and sequence:u64, then fixed fields. Record LSN is first_lsn + ordinal. Tags 1..7 follow the Payload declaration order. Upsert carries u,v:u64, type:u32, expiry:u64. Delete omits expiry. VertexUpdate carries v,volume:u64 and flagged:u8. Tick has no fields. Expire carries handle,version:u64. Each hub record carries v:u64. Trailer is IEEE CRC32:u32 over header and payload. Cap frame bytes and counts before allocation. Verify lengths, tags, continuity and CRC. Truncate an incomplete or corrupt final frame. Quarantine interior corruption.
 
 Batch multiple frames per fsync. Follower append RPCs carry leader epoch and preceding log identity. Followers verify the prefix, fsync, persist progress and acknowledge. Replay identical explicit records without regenerating derived events. Canonical binary snapshots at frame boundaries include sorted graph/vertex records, allocator counters, cooldowns, scheduler entries, producer sequence state, policy configuration, log identity and durable commit boundary. Reconstruct equivalent forest indexes from structural edges in stable order. Write temp, fsync, rename and sync the directory before removing covered live WAL segments. Retain archived event history for AuditAt within the advertised retention window.
+
+Phase 5 determinism uses canonical logical state and canonical snapshot bytes. Serialize only effective scheduler entries from the live records, sorted by expiry and handle. Omit stale wheel entries, allocator addresses, tree shape, hash iteration order and query caches. Include future-observable counters such as the next handle. At the same applied boundary, compare both checksums and snapshot bytes for an uninterrupted replica and one restored midstream and fed the same suffix.
 
 ## Election and reconciliation
 
