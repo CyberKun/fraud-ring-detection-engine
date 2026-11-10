@@ -192,6 +192,16 @@ class Tenant {
         time_ = e.time;
     }
     bool acceptable(const Command& c, Time now) const {
+        if constexpr (requires { engine_.remaining_vertices(); }) {
+            if (auto x = std::get_if<VertexUpdate>(&c)) {
+                if (!vertices_.contains(x->vertex) && !engine_.remaining_vertices()) return false;
+            }
+            if (auto x = std::get_if<EdgeUpsert>(&c)) {
+                const auto& k = x->key;
+                std::size_t needed = !vertices_.contains(k.u) + (k.u != k.v && !vertices_.contains(k.v));
+                if (needed > engine_.remaining_vertices()) return false;
+            }
+        }
         if (auto x = std::get_if<VertexUpdate>(&c)) {
             auto it = vertices_.find(x->vertex);
             Id old = it == vertices_.end() ? 0 : it->second.weight.volume;
@@ -287,6 +297,12 @@ public:
             lsn_ = e.lsn;
             time_ = e.time;
             return Status::duplicate;
+        }
+        if constexpr (requires { engine_.remaining_vertices(); }) {
+            if (auto x = std::get_if<EdgeUpsert>(&e.payload); x && !acceptable(*x,e.time))
+                return Status::invalid_input;
+            if (auto x = std::get_if<VertexUpdate>(&e.payload); x && !acceptable(*x,e.time))
+                return Status::invalid_input;
         }
         if constexpr (DynamicGraphEngine<Engine>) {
             apply(e,false,alerts);

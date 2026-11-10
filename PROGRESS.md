@@ -1,6 +1,36 @@
 # Milestone status
 
-Phase 2 passed the offline replay gate. Phases 3–9 are unfinished.
+Phase 3 passed the LCT maximum-spanning-forest gate. Phases 4–9 are unfinished.
+
+## Phase 3 verification
+
+Linux amd64 Debian development image, GCC 12.2.0, CMake Release. Both timed runs used seed 20261111. Elapsed time covers the entire differential run including query comparison and offline indexing.
+
+```text
+> docker build -f Dockerfile.dev -t fraud-ring-phase3 .
+> docker run --rm -w /workspace/build fraud-ring-phase3 ctest --output-on-failure
+100% tests passed, 0 tests failed out of 25
+Total Test time (real) =   0.31 sec
+
+> docker run --rm -v "${PWD}:/traces" -w /traces fraud-ring-phase3 /workspace/build/phase3_fuzz tier1
+PASS tier=1 seed=20261111 vertices=200 mutations=100000 records=137821 audits=137821 mismatches=0 elapsed_s=3.479
+expire=34703 suppress=1559 restore=1559 cycle_swaps=40946 repairs=13160 repair_vertices=45638 repair_promotions=9938 peak_dummies=51 kruskal_checks=197
+
+> docker run --rm -v "${PWD}:/traces" -w /traces fraud-ring-phase3 /workspace/build/phase3_fuzz tier2
+PASS tier=2 seed=20261111 vertices=50000 mutations=10000000 records=14348892 audits=4884 mismatches=0 elapsed_s=71.145
+expire=4037954 suppress=155469 restore=155469 cycle_swaps=3863413 repairs=1232011 repair_vertices=4244322 repair_promotions=909037 peak_dummies=2085 kruskal_checks=0
+```
+
+Tier 1 compares a probed vertex's aggregate and complete induced subgraph, including edge versions, against BFS and Engine A after each WAL record. It also checks pair connectivity and compares B's alerts against BFS. The historical checker uses the LSN as a distinct query coordinate so equal-time intermediate states are testable. A separate descending-key Kruskal reconstruction checks the actual selected tree handles and dummy count periodically.
+
+Tier 2 keeps a continuous 50,000-vertex graph and checks B against A every 2,048 mutations and at the end. Engine A processes consecutive windows with carried policy state. Its checkpoints include connectivity, all component aggregates and complete induced subgraphs. The workload mixes cycle saturation, tied expiries, repeated TTL extensions, manual cuts, hub transitions, cross-group edges and vertex updates. The fixed slab test separately fills all 19 dummy slots for 20 vertices, empties them, and repeats for 20 rounds.
+
+The reducer ran end-to-end in a disposable copy of each harness with a deliberately incorrect comparison. Both eight-mutation inputs produced replayable two-mutation traces. Dropping either remaining mutation removed the mismatch. The production runs above used the unmodified comparison.
+
+```text
+tier=1 injected=8 shrunk=2 replay=reproduced all_single_deletions=pass
+tier=2 injected=8 shrunk=2 replay=reproduced all_single_deletions=pass
+```
 
 ## Phase 2 verification
 

@@ -76,10 +76,10 @@ struct Capture {
 // A small reference adapter lets Tenant own its sink while the builder
 // controls the current slot and closes surviving intervals at the window end.
 struct Sink {
-    Capture& capture;
-    void set_vertex(Id v, Weight w) { capture.set_vertex(v,w); }
-    void open_edge(const EdgeRecord& e) { capture.open_edge(e); }
-    void close_edge(Handle h) { capture.close_edge(h); }
+    Capture*& capture;
+    void set_vertex(Id v, Weight w) { capture->set_vertex(v,w); }
+    void open_edge(const EdgeRecord& e) { capture->open_edge(e); }
+    void close_edge(Handle h) { capture->close_edge(h); }
 };
 
 class HistoricalView {
@@ -206,13 +206,33 @@ struct OfflineEngine::Index {
 
 std::optional<OfflineEngine> OfflineEngine::build(Id tenant, Policy policy,
                                                   std::span<const Event> records, Time end_ms) {
+    return OfflineReplay(tenant,policy).next_window(records,end_ms);
+}
+
+struct OfflineReplay::State {
+    Policy policy;
+    Capture* capture{};
+    Tenant<Sink> projection;
+    std::vector<VertexView> vertices;
+    std::vector<EdgeRecord> edges;
+    std::unordered_map<Id,Time> first;
+    Time start{};
+    bool failed{};
+    State(Id tenant, Policy p) : policy(p), projection(tenant,p,Sink{capture}) {}
+};
+OfflineReplay::OfflineReplay(Id tenant,Policy policy) : state_(std::make_unique<State>(tenant,policy)) {}
+OfflineReplay::~OfflineReplay() = default;
+std::optional<OfflineEngine> OfflineReplay::next_window(std::span<const Event> records, Time end_ms) {
+    auto& s = *state_;
     // Each input record can introduce at most two external vertex IDs.
-    if (!policy.valid() || records.size() > std::numeric_limits<Dense>::max()/2) return {};
-    auto index = std::make_shared<Index>();
+    if (s.failed || !s.policy.valid() || end_ms < s.start ||
+        records.size() > (std::numeric_limits<Dense>::max()-s.vertices.size())/2) return {};
+    auto index = std::make_shared<OfflineEngine::Index>();
     index->end = end_ms;
     auto& line = index->line;
+    if (!s.vertices.empty() && s.start < end_ms) line.times.push_back(s.start);
     for (const auto& e : records) {
-        if (e.time >= end_ms || (!line.times.empty() && e.time < line.times.back())) return {};
+        if (e.time < s.start || e.time >= end_ms || (!line.times.empty() && e.time < line.times.back())) return {};
         if (line.times.empty() || e.time != line.times.back()) line.times.push_back(e.time);
     }
     line.base = std::bit_ceil(std::max<Slot>(1,line.times.size()));
@@ -221,21 +241,44 @@ std::optional<OfflineEngine> OfflineEngine::build(Id tenant, Policy policy,
         std::vector<std::vector<Dense>> changed(line.times.size());
         {
             Capture capture{line,changed};
-            Tenant<Sink> projection(tenant,policy,Sink{capture});
+            if (line.times.empty()) {
+                s.start = end_ms;
+                return OfflineEngine(std::move(index));
+            }
+            s.capture = &capture;
+            for (auto v : s.vertices) capture.set_vertex(v.id,v.weight);
+            for (const auto& e : s.edges) capture.open_edge(e);
             std::vector<Alert> unused;
             for (const auto& e : records) {
                 if (line.times[capture.slot] != e.time) ++capture.slot;
-                auto status = projection.apply_record(e,unused);
-                if (status != Status::ok && status != Status::duplicate) return {};
+                auto status = s.projection.apply_record(e,unused);
+                if (status != Status::ok && status != Status::duplicate) {
+                    s.failed = true;
+                    s.capture = nullptr;
+                    return {};
+                }
             }
             capture.finish();
+            s.capture = nullptr;
+            s.vertices.clear();
+            s.edges.clear();
+            for (const auto& [id,op] : capture.weights)
+                s.vertices.push_back({id,line.weights[op.action/2].weight});
+            for (const auto& [handle,op] : capture.edges)
+                s.edges.push_back(line.edges[op.action/2].edge);
         }
         HistoricalView view(line);
-        Crossings crossings{view,line,changed,policy};
+        Crossings crossings{view,line,changed,s.policy};
         walk(line,view,1,0,line.base,crossings);
-        for (Dense i = 0; i < line.ids.size(); ++i)
-            index->first.push_back(view.dsu.singleton_first(i));
+        for (Dense i = 0; i < line.ids.size(); ++i) {
+            auto first = view.dsu.singleton_first(i);
+            if (first) s.first.try_emplace(line.ids[i],*first);
+            auto it = s.first.find(line.ids[i]);
+            if (it != s.first.end()) first = it->second;
+            index->first.push_back(first);
+        }
     }
+    s.start = end_ms;
     return OfflineEngine(std::move(index));
 }
 

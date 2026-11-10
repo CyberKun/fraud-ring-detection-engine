@@ -1,3 +1,4 @@
+#include "compare_subgraphs.hpp"
 #include "engines/brute_force.hpp"
 #include "engines/offline.hpp"
 #include <array>
@@ -44,24 +45,6 @@ struct Workload {
     }
 };
 
-void canonicalize(Subgraph& g) {
-    std::sort(g.vertices.begin(),g.vertices.end(),[](auto a, auto b) { return a.id < b.id; });
-    std::sort(g.edges.begin(),g.edges.end(),[](auto a, auto b) { return a.handle < b.handle; });
-}
-bool equal(Subgraph& a, Subgraph& b) {
-    canonicalize(a);
-    canonicalize(b);
-    auto same_vertex = [](VertexView x, VertexView y) {
-        return x.id == y.id && x.weight.volume == y.weight.volume && x.weight.flagged == y.weight.flagged;
-    };
-    auto same_edge = [](EdgeRecord x, EdgeRecord y) {
-        return x.key == y.key && x.handle == y.handle && x.version == y.version &&
-               x.expiry == y.expiry && x.shadow == y.shadow;
-    };
-    return a.truncated == b.truncated && a.total_vertices == b.total_vertices &&
-           std::equal(a.vertices.begin(),a.vertices.end(),b.vertices.begin(),b.vertices.end(),same_vertex) &&
-           std::equal(a.edges.begin(),a.edges.end(),b.edges.begin(),b.edges.end(),same_edge);
-}
 double elapsed(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double>(b-a).count();
 }
@@ -130,7 +113,7 @@ int run(bool differential) {
         if (a.has_value() == e.has_value() &&
             (!e || (a->stats == e->stats && a->connected_to_peer == e->connected_to_peer &&
                     (!differential || a->first_alert_timestamp_ms == e->first_alert_timestamp_ms) &&
-                    equal(a->subgraph,e->subgraph)))) continue;
+                    fraud::test::equal(a->subgraph,e->subgraph)))) continue;
         std::cerr << "mismatch seed=" << seed << " time=" << queries[i].time
                   << " vertex=" << queries[i].vertex << '\n';
         return 1;

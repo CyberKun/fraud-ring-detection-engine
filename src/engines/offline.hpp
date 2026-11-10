@@ -23,8 +23,21 @@ public:
     bool connected_at(Time t, Id u, Id v) const;
     std::vector<std::optional<AuditResult>> audit_many(std::span<const AuditQuery> queries) const;
 private:
+    friend class OfflineReplay;
     struct Index;
     explicit OfflineEngine(std::shared_ptr<const Index> index) : index_(std::move(index)) {}
     std::shared_ptr<const Index> index_;
+};
+
+// Successive disjoint windows over one continuous WAL. Retains policy state
+// and first crossings between windows, so consumed segment trees can be freed.
+class OfflineReplay {
+public:
+    OfflineReplay(Id tenant, Policy policy);
+    ~OfflineReplay();
+    std::optional<OfflineEngine> next_window(std::span<const Event> records, Time end_ms);
+private:
+    struct State;
+    std::unique_ptr<State> state_;
 };
 } // namespace fraud
