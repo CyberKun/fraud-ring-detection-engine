@@ -1,6 +1,31 @@
 # Milestone status
 
-Phase 1 passed the core and brute-force oracle gate. Phases 2–9 are unfinished.
+Phase 2 passed the offline replay gate. Phases 3–9 are unfinished.
+
+## Phase 2 verification
+
+Single runs in the Linux amd64 Debian development image, GCC 12.2.0, CMake Release. The index consumes the same structural transitions as the live writer. Unit tests exercise rollback, disjoint and open-ended lifespans, TTL metadata, overlapping suppressed hubs, duplicate records, bounded subgraphs and first crossings across splits and weight changes.
+
+```text
+> docker build -f Dockerfile.dev -t fraud-ring-phase2 .
+> docker run --rm -w /workspace/build fraud-ring-phase2 ctest --output-on-failure
+100% tests passed, 0 tests failed out of 18
+Total Test time (real) =   0.33 sec
+
+> docker run --rm fraud-ring-phase2 ./build/phase2_check differential
+PASS mode=differential seed=20261111 vertices=200 timestamps=100000 records=142271 audits=100000 mismatches=0
+expire=41363 suppress=454 restore=454
+generate_oracle_s=0.440 build_s=0.152 audit_batch_s=0.108 total_s=0.722
+
+> docker run --rm fraud-ring-phase2 ./build/phase2_check scale
+PASS mode=scale seed=20261111 vertices=20000 timestamps=777942 records=1000000 audits=1520 mismatches=0
+expire=222057 suppress=1 restore=0
+generate_oracle_s=2.186 build_s=2.558 audit_batch_s=0.332 total_s=5.080
+```
+
+The differential workload issues one query per timestamp and compares component aggregates, pair connectivity, the full induced multigraph with edge handles, versions and TTLs, vertex flags and weights, and the earliest qualifying timestamp against the BFS oracle. Vertex selection alternates between random queries and recently touched endpoints after initialization. The oracle independently tracks first qualification per vertex.
+
+The scale workload builds the index, including the first-crossing pass, over exactly one million records and verifies connectivity, aggregates and subgraphs at 1,520 sampled checkpoints. The elapsed times above separate workload/oracle generation, index construction and batched queries. The scale workload exercised one hub suppression. Repeated suppression and restoration were exercised by the differential workload.
 
 ## Phase 1 verification
 

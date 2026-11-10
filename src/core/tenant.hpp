@@ -20,7 +20,9 @@ struct Batch {
 
 // Single-writer tenant projection. apply_record consumes trusted ordered records.
 // The service owns shard-wide LSN allocation and eventual durable publication.
-template<DynamicGraphEngine Engine>
+// Live engines answer connectivity queries. A replay sink can instead consume
+// the exact structural records (including key, version and TTL) for indexing.
+template<class Engine>
 class Tenant {
     struct Vertex {
         Weight weight{};
@@ -47,12 +49,16 @@ class Tenant {
         if (vertices_.try_emplace(v).second) engine_.set_vertex(v, {});
     }
     void link(EdgeRecord& e) {
-        engine_.insert_edge(e.handle, e.key.u, e.key.v, e.expiry);
-        for (Id v : endpoints(e.key)) vertices_.at(v).structural.insert(e.handle);
         e.shadow = false;
+        if constexpr (DynamicGraphEngine<Engine>)
+            engine_.insert_edge(e.handle, e.key.u, e.key.v, e.expiry);
+        else
+            engine_.open_edge(e);
+        for (Id v : endpoints(e.key)) vertices_.at(v).structural.insert(e.handle);
     }
     void unlink(EdgeRecord& e, Removal why) {
-        engine_.delete_edge(e.handle, why);
+        if constexpr (DynamicGraphEngine<Engine>) engine_.delete_edge(e.handle, why);
+        else engine_.close_edge(e.handle);
         for (Id v : endpoints(e.key)) vertices_.at(v).structural.erase(e.handle);
         e.shadow = true;
     }
@@ -78,7 +84,13 @@ class Tenant {
             e.expiry = x.expiry;
             ++e.version;
             if (schedule) wheel_.schedule({e.expiry,e.handle,e.version});
-            if (!e.shadow) engine_.extend_ttl(e.handle,e.expiry);
+            if (!e.shadow) {
+                if constexpr (DynamicGraphEngine<Engine>) engine_.extend_ttl(e.handle,e.expiry);
+                else {
+                    engine_.close_edge(e.handle);
+                    engine_.open_edge(e);
+                }
+            }
             return;
         }
         auto h = next_handle_++;
@@ -192,6 +204,8 @@ class Tenant {
     }
 public:
     explicit Tenant(Id tenant, Policy policy = {}) : tenant_(tenant), policy_(policy) {}
+    Tenant(Id tenant, Policy policy, Engine engine)
+        : tenant_(tenant), policy_(policy), engine_(std::move(engine)) {}
     const Engine& engine() const { return engine_; }
     std::size_t active_degree(Id v) const {
         auto it = vertices_.find(v);
@@ -274,7 +288,15 @@ public:
             time_ = e.time;
             return Status::duplicate;
         }
-        apply(e,false,alerts);
+        if constexpr (DynamicGraphEngine<Engine>) {
+            apply(e,false,alerts);
+        } else {
+            std::visit([&](auto x) { mutate(x,false); }, e.payload);
+            if (e.source) sequences_[e.source->producer] = e.source->sequence;
+            epoch_ = e.epoch;
+            lsn_ = e.lsn;
+            time_ = e.time;
+        }
         rebuild_wheel_ = true;
         return Status::ok;
     }
