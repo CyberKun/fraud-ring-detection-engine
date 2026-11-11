@@ -69,9 +69,47 @@ The two time arguments are lease TTL in seconds and leader tick interval in mill
 
 Read the local role, promised epoch, last entry epoch, last LSN and commit LSN with `GetClusterHealth`. Route writes to the member reporting `LEADER`. The default acknowledgment mode is `QUORUM`. Setting `mode=ASYNC` permits local durability during a peer partition. A later election can discard that suffix. Pass `min_lsn` on a read to receive `UNAVAILABLE` while a replica is behind. Successful reads return the applied watermark and role in both the response and gRPC trailing metadata.
 
-Replicas retain FRE1 frames for catch-up and historical audit. Recovery rebuilds the committed graph from those frames. Disk usage, replay time and in-memory log storage grow with history length. The chaos suite starts independent replica processes with disposable directories and gives each peer and lease connection a controllable TCP proxy. Run it in Compose with a dedicated etcd service.
+Replicas retain FRE1 frames for catch-up and historical audit. Recovery restores the latest available committed checkpoint and replays the remaining frames. Disk usage, replay time and in-memory log storage grow with history length. The chaos suite starts independent replica processes with disposable directories and gives each peer and lease connection a controllable TCP proxy. Run it in Compose with a dedicated etcd service.
 
 ```sh
 docker compose -f compose.phase6.yml up --build --abort-on-container-exit --exit-code-from chaos
 docker compose -f compose.phase6.yml down
 ```
+
+### Routing and Kafka ingestion
+
+Start three replicas per shard. Store the placement document at the etcd key `/shard_map`. Each index in `partitions` is a Kafka partition number and its value is the shard ID. Member addresses use the same order as the replica command line.
+
+```json
+{
+  "partitions": [2, 0, 3, 1, 2, 0, 3, 1],
+  "pins": {"101": 1},
+  "members": {
+    "0": ["s0a:5100", "s0b:5100", "s0c:5100"],
+    "1": ["s1a:5100", "s1b:5100", "s1c:5100"],
+    "2": ["s2a:5100", "s2b:5100", "s2c:5100"],
+    "3": ["s3a:5100", "s3b:5100", "s3c:5100"]
+  }
+}
+```
+
+```sh
+ETCDCTL_API=3 etcdctl --endpoints=http://etcd:2379 put /shard_map < placement.json
+./build/fraud_router http://etcd:2379 0.0.0.0:5200
+./build/fraud_produce http://etcd:2379 broker:9092 fraud-mutations < mutations.jsonl
+```
+
+The producer accepts one protobuf-JSON `KafkaMutation` per line, for example `{"update":{"tenant_id":"101","vertex_id":"42","volume":"120","source":{"producer_id":"9","sequence":"1"}}}`. It sends protobuf bytes to the partition returned by `Topology::partition`. Unpinned tenants use 64-bit FNV-1a on the eight little-endian bytes of their unsigned ID, modulo the partition count. Provision the topic with that count. The router and ingestion workers read the map and election keys at a single etcd revision, refreshed on demand after 150 ms. Moving existing tenant state across shards requires draining producers and transferring history before changing placement.
+
+Set `FRAUD_KAFKA_BROKERS` on each replica to enable ingestion. All replicas use the same `FRAUD_KAFKA_TOPIC` (default `fraud-mutations`) and `FRAUD_KAFKA_GROUP` (default `fraud-ingest`). Leaders assign their partitions after reconciliation. Every Kafka mutation needs a producer ID and monotonically increasing sequence per tenant/producer pair. Deliver each pair in sequence order. Use the same source identity across Kafka and gRPC to deduplicate cross-channel retries.
+
+`FRAUD_KAFKA_ACK` defaults to `QUORUM`. With `ASYNC`, an offset can cover a locally fsynced entry that a later election discards. `FRAUD_OFFSET_COMMIT_MS` sets the offset flush interval (default 250 ms). Replicas atomically checkpoint committed state, including producer high-water marks, every `FRAUD_CHECKPOINT_FRAMES` frames (default 4096). Restart loads the checkpoint and applies the committed suffix. Historical audit and peer reconciliation retain the full WAL.
+
+Admissions include the running writer. `FRAUD_PENDING_REQUESTS` defaults to 256, `FRAUD_PENDING_BYTES` to 1048576 and `FRAUD_REPLICATION_LAG` to 16384 locally durable records beyond the majority commit watermark. A full limit returns `RESOURCE_EXHAUSTED`. Kafka pauses its assigned partitions while retaining the pending message. The metrics endpoint exposes `shed_requests_total`, `ingestion_queue_depth`, `ingestion_pending_bytes`, `kafka_pause_total`, `kafka_resume_total` and `kafka_offset_commits_total`.
+
+```sh
+docker compose -f compose.phase7.yml up --build --abort-on-container-exit --exit-code-from gate
+docker compose -f compose.phase7.yml down
+```
+
+The same test is registered with CTest as `Sharding.FourShardKafka`. Set `FRAUD_TEST_BROKERS` to run it against a reachable broker. It creates a unique topic and consumer group.

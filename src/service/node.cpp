@@ -67,6 +67,20 @@ void Node::replay(const storage::Frame& frame) {
     }
     alert_cv_.notify_all();
 }
+void Node::load_checkpoint(const storage::Image& image,std::span<const storage::Frame> prefix) {
+    std::lock_guard lock(mutex_);
+    if(lsn_ || !models_.empty() || prefix.empty()) throw storage::Error("invalid checkpoint destination");
+    const auto& last=prefix.back().back();
+    if(image.lsn!=last.lsn || image.epoch!=last.epoch || image.time!=last.time ||
+       image.boundary_crc!=boundary(prefix.back()) || image.capacity!=options_.capacity)
+        throw storage::Error("checkpoint disagrees with committed WAL");
+    options_.policy=image.policy;
+    for(const auto& t:image.tenants)
+        if(!std::visit([&](auto& m){return m.restore(t);},model(t.tenant))) throw storage::Error("invalid replica checkpoint");
+    for(const auto& frame:prefix)
+        for(const auto& e:frame) history_[e.tenant].push_back(e);
+    epoch_=image.epoch;lsn_=image.lsn;time_=image.time;boundary_crc_=image.boundary_crc;
+}
 void Node::reset() {
     std::lock_guard lock(mutex_);
     models_.clear(); history_.clear(); alerts_.clear(); lsn_=time_=boundary_crc_=0; epoch_=1;

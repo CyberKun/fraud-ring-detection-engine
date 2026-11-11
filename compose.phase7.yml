@@ -1,0 +1,20 @@
+services:
+  broker:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.9
+    command: [redpanda, start, --overprovisioned, --smp, "1", --memory, 384M, --reserve-memory, 0M, --node-id, "0", --check=false, --kafka-addr, "0.0.0.0:9092", --advertise-kafka-addr, "broker:9092"]
+    healthcheck:
+      test: [CMD, rpk, cluster, info, -X, brokers=broker:9092]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  gate:
+    image: fraud-ring-phase7
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      FRAUD_TEST_BROKERS: broker:9092
+    command: [python3, bench/phase7_integration.py, ./build]

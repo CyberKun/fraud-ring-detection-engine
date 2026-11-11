@@ -38,6 +38,7 @@ public:
     void replay(const storage::Frame&);
     void account_wal_write(storage::WriteStats);
     void reset();
+    void load_checkpoint(const storage::Image&,std::span<const storage::Frame> prefix);
     std::vector<Id> tenant_ids() const;
     ~Node();
     Node(const Node&)=delete;

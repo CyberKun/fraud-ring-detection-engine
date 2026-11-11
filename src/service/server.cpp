@@ -1,4 +1,5 @@
 #include "service/server.hpp"
+#include "service/commands.hpp"
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -23,7 +24,7 @@ grpc::Status mutate(Node& node,Replication* group,const Request& req,Command cmd
     return call([&] {
         std::optional<ProducerSequence> source;
         if(req.has_source()) source=ProducerSequence{req.source().producer_id(),req.source().sequence()};
-        auto result=group?group->write(req.tenant_id(),cmd,source,req.mode()):node.mutate(req.tenant_id(),wall_ms(),cmd,source);
+        auto result=group?group->write(req.tenant_id(),cmd,source,req.mode(),req.ByteSizeLong()):node.mutate(req.tenant_id(),wall_ms(),cmd,source);
         if(result.status!=Status::ok && result.status!=Status::duplicate)
             return grpc::Status(Code::INVALID_ARGUMENT,"mutation rejected");
         out.set_epoch(result.position.epoch); out.set_applied_lsn(result.position.lsn);
@@ -67,13 +68,13 @@ grpc::Status read_at(grpc::ServerContext& ctx,Replication* group,Id minimum,Resp
 }
 }
 grpc::Status Api::UpsertEdge(grpc::ServerContext*,const rpc::UpsertEdgeRequest* r,rpc::MutationResponse* out) {
-    return mutate(node_,group_,*r,EdgeUpsert{{r->u(),r->v(),r->edge_type()},r->expiry_ms()},*out);
+    return mutate(node_,group_,*r,command(*r),*out);
 }
 grpc::Status Api::DeleteEdge(grpc::ServerContext*,const rpc::DeleteEdgeRequest* r,rpc::MutationResponse* out) {
-    return mutate(node_,group_,*r,EdgeDelete{{r->u(),r->v(),r->edge_type()}},*out);
+    return mutate(node_,group_,*r,command(*r),*out);
 }
 grpc::Status Api::UpdateVertex(grpc::ServerContext*,const rpc::UpdateVertexRequest* r,rpc::MutationResponse* out) {
-    return mutate(node_,group_,*r,VertexUpdate{r->vertex_id(),{r->volume(),r->is_flagged()}},*out);
+    return mutate(node_,group_,*r,command(*r),*out);
 }
 grpc::Status Api::Connected(grpc::ServerContext* ctx,const rpc::ConnectedRequest* r,rpc::ConnectedResponse* out) {
     return read_at(*ctx,group_,r->min_lsn(),*out,
@@ -98,12 +99,16 @@ grpc::Status Api::GetComponentSubgraph(grpc::ServerContext* ctx,const rpc::Subgr
             return grpc::Status::OK;
         });
 }
-grpc::Status Api::AuditAt(grpc::ServerContext*,const rpc::AuditAtRequest* r,rpc::AuditAtResponse* out) {
-    return call([&]{auto a=node_.audit(r->tenant_id(),r->timestamp_ms(),r->vertex_id(),r->max_nodes());
-        if(!a.value) return missing();
-        stats(a.value->stats,a.lsn,*out->mutable_stats()); graph(a.value->subgraph,a.lsn,*out->mutable_subgraph());
-        if(a.value->first_alert_timestamp_ms) out->set_first_alert_timestamp_ms(*a.value->first_alert_timestamp_ms);
-        return grpc::Status::OK;});
+grpc::Status Api::AuditAt(grpc::ServerContext* ctx,const rpc::AuditAtRequest* r,rpc::AuditAtResponse* out) {
+    return read_at(*ctx,group_,r->min_lsn(),*out,
+        [&]{return node_.audit(r->tenant_id(),r->timestamp_ms(),r->vertex_id(),r->max_nodes());},
+        [&](const auto& a){
+            if(!a.value) return missing();
+            stats(a.value->stats,a.lsn,*out->mutable_stats());
+            graph(a.value->subgraph,a.lsn,*out->mutable_subgraph());
+            if(a.value->first_alert_timestamp_ms) out->set_first_alert_timestamp_ms(*a.value->first_alert_timestamp_ms);
+            return grpc::Status::OK;
+        });
 }
 grpc::Status Api::SubscribeAlerts(grpc::ServerContext* ctx,const rpc::SubscribeAlertsRequest* r,
                                   grpc::ServerWriter<rpc::AlertEvent>* writer) {

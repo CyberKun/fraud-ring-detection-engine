@@ -27,8 +27,10 @@ std::string session(std::string id) {
 }
 } // namespace
 Cluster::Cluster(Id shard, std::string id, std::map<std::string, std::string> members, std::string etcd,
-                 std::filesystem::path dir, service::Options options, int ttl, int tick_ms)
+                 std::filesystem::path dir, service::Options options, int ttl, int tick_ms,
+                 Id checkpoint_frames)
     : view(options), shard_(shard), id_(id), session_(session(id)), ttl_(ttl), tick_ms_(tick_ms),
+      checkpoint_(dir / "replica.snapshot"), checkpoint_frames_(checkpoint_frames),
       journal_(dir, identity(shard, members), id), election_(etcd, shard), writer_(options) {
     if (members.size() != 3 || !members.contains(id) || ttl < 2 || tick_ms < 1)
         throw std::invalid_argument("invalid group configuration");
@@ -39,12 +41,26 @@ Cluster::Cluster(Id shard, std::string id, std::map<std::string, std::string> me
         if (name != id)
             peers_[name] = rpc::ReplicaPeer::NewStub(
                 grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args));
+    if (std::filesystem::exists(checkpoint_)) {
+        auto image = storage::deserialize(storage::read_file(checkpoint_, storage::snapshot_cap));
+        auto frames = std::span(journal_.frames()).first(journal_.state().commit.index);
+        auto end = std::lower_bound(frames.begin(), frames.end(), image.lsn,
+                                    [](const auto &f, Id lsn) { return f.back().lsn < lsn; });
+        if (end == frames.end())
+            throw Invariant("snapshot beyond durable commit");
+        checkpoint_index_ = visible_ = std::distance(frames.begin(), end) + 1;
+        view.load_checkpoint(image, frames.first(visible_));
+    }
     publish(journal_.state().commit.index);
 }
 void Cluster::publish(Id index) {
     while (visible_ < index) {
         view.replay(journal_.frames().at(visible_));
         ++visible_;
+    }
+    if (visible_ == journal_.state().commit.index && visible_ - checkpoint_index_ >= checkpoint_frames_) {
+        storage::atomic_file(checkpoint_, storage::serialize(view.image()));
+        checkpoint_index_ = visible_;
     }
 }
 void Cluster::follow() {
@@ -295,24 +311,41 @@ bool Cluster::replicate(const Lease &l, bool all) {
     return confirmed;
 }
 service::Mutation Cluster::write(Id tenant, Command cmd, std::optional<ProducerSequence> source,
-                                 rpc::AckMode mode) {
+                                 rpc::AckMode mode, std::size_t bytes) {
+    bytes = std::max(bytes, sizeof(Command));
+    auto reservation = admission_.reserve(bytes, limits_.requests, limits_.bytes);
+    if (!reservation) {
+        ++shed_;
+        throw std::overflow_error("leader admission limit");
+    }
     try {
         std::lock_guard drive(drive_);
         Lease l;
         {
             std::lock_guard lock(mu_);
             if (!ready_)
-                throw Rejected("leader gate closed");
+                throw Rejected("NOT_LEADER: reconciliation gate closed");
             l = lease_;
+            auto state = journal_.state();
+            // A current-term tick can certify an inherited uncommitted suffix.
+            bool seal = std::holds_alternative<Tick>(cmd) && state.tail.epoch < l.epoch;
+            if (!seal && state.tail.lsn - state.commit.lsn >= limits_.lag) {
+                ++shed_;
+                throw std::overflow_error("replication lag watermark");
+            }
         }
-        verify(l);
+        try {
+            verify(l);
+        } catch (const Rejected &e) {
+            throw Rejected(std::string("NOT_LEADER: ") + e.what());
+        }
         Batch batch;
         Boundary tip;
         {
             std::lock_guard lock(mu_);
             journal_.fence(l.epoch, l.owner);
             if (!ready_ || lease_.epoch != l.epoch)
-                throw Rejected("lease changed before append");
+                throw Rejected("NOT_LEADER: lease changed before append");
             batch = writer_.propose(l.epoch, tenant, service::wall_ms(), cmd, source);
             if (batch.status == Status::ok)
                 view.account_wal_write(journal_.append(journal_.state().tail, batch.records));
@@ -341,6 +374,20 @@ service::Mutation Cluster::write(Id tenant, Command cmd, std::optional<ProducerS
         std::cerr << e.what() << std::endl;
         std::terminate();
     }
+}
+Id Cluster::leader_epoch() {
+    std::lock_guard guard(mu_);
+    return ready_ ? lease_.epoch : 0;
+}
+bool Cluster::owns_epoch(Id epoch) {
+    Lease lease;
+    {
+        std::lock_guard guard(mu_);
+        if (!ready_ || !epoch || lease_.epoch != epoch)
+            return false;
+        lease = lease_;
+    }
+    return election_.holds(lease);
 }
 std::unique_lock<std::mutex> Cluster::read_guard(Id min, std::string &role) {
     std::unique_lock lock(mu_);
@@ -371,7 +418,10 @@ void Cluster::health(rpc::ShardHealth &h, bool checksum) {
 }
 std::string Cluster::metrics() {
     std::lock_guard lock(mu_);
-    return "# TYPE replica_lsn_lag gauge\nreplica_lsn_lag " +
+    auto pending = admission_.usage();
+    return "ingestion_queue_depth " + std::to_string(pending.requests) + "\ningestion_pending_bytes " +
+           std::to_string(pending.bytes) + "\n# TYPE shed_requests_total counter\nshed_requests_total " +
+           std::to_string(shed_.load()) + "\n# TYPE replica_lsn_lag gauge\nreplica_lsn_lag " +
            std::to_string(std::max(journal_.state().tail.lsn, observed_tail_) - view.position().lsn) +
            "\n# HELP failover_duration_seconds Local lease acquisition to reconciled write gate.\n# TYPE "
            "failover_duration_seconds histogram\n" +

@@ -8,7 +8,7 @@ namespace fraud::service {
 Time wall_ms();
 class Replication {
 public:
-    virtual Mutation write(Id,Command,std::optional<ProducerSequence>,rpc::AckMode)=0;
+    virtual Mutation write(Id,Command,std::optional<ProducerSequence>,rpc::AckMode,std::size_t)=0;
     virtual std::unique_lock<std::mutex> read_guard(Id min_lsn,std::string& role)=0;
     virtual void health(rpc::ShardHealth&,bool checksum)=0;
     virtual ~Replication()=default;

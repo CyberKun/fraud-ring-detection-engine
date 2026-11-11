@@ -1,4 +1,5 @@
 #include "replica/election.hpp"
+#include "replica/gateway.hpp"
 #include <curl/curl.h>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -6,7 +7,7 @@
 #include <stdexcept>
 
 namespace fraud::replica {
-namespace {
+namespace gateway {
 using json = nlohmann::json;
 std::string b64(const std::string &s) {
     std::string out(4 * ((s.size() + 2) / 3) + 1, '\0');
@@ -55,7 +56,8 @@ json post(const std::string &url, json body) {
         throw std::runtime_error("etcd unavailable: " + url);
     return json::parse(response);
 }
-} // namespace
+} // namespace gateway
+using namespace gateway;
 Election::Election(std::string endpoint, Id shard)
     : endpoint_(std::move(endpoint)), key_(b64("/shards/" + std::to_string(shard) + "/leader")) {}
 Lease Election::lookup() const {

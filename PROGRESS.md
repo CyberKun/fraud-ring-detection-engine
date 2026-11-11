@@ -1,6 +1,33 @@
 # Milestone status
 
-Phase 6 passed the replication, election and recovery gate. Phases 7 through 9 are unfinished.
+Phase 7 passed the four-shard routing, Kafka durability and redelivery gate. Phases 8 and 9 are unfinished.
+
+## Phase 7 verification
+
+Linux amd64 Release build on one Docker host using etcd v3, Redpanda v24.3.9, eight Kafka partitions, four shards, twelve replica processes and one stateless gRPC router. Both runs below used a real broker. The pinned tenant received four times the timed writes of each normal tenant.
+
+```text
+$ FRAUD_TEST_BROKERS=fraud7-kafka:9092 ctest --output-on-failure
+51/51 Test #51: Sharding.FourShardKafka .................................................   Passed   31.82 sec
+
+100% tests passed, 0 tests failed out of 51
+
+Total Test time (real) =  62.00 sec
+
+$ FRAUD_TEST_BROKERS=fraud7-kafka:9092 python3 /work/bench/phase7_integration.py /build
+crash_after_quorum_before_offset=passed transparent_router_retry=passed redelivery_transitions=0
+lag_shedding=passed kafka_pause_resume=passed min_lsn_leader_fallback=passed
+shards=4 replicas=12 tenants=10 tenant_isolation=100% oracle_checksums=12/12 unique_transitions=423 duplicate_kafka_deliveries=208 hot_to_normal_load=4:1
+grpc_quorum_writes=208 kafka_unique_writes=208 kafka_deliveries=416 seconds=8.569 unique_writes_per_second=48.55 grpc_ack_p99_ms=247.33
+follower_read_distribution=2/2_per_shard tenant_alert_streams=4/4 routed_deletes=4/4
+kafka_async_offset_after_local_fsync=passed kafka_quorum_offset_after_replication=passed
+```
+
+Throughput counts unique mutations from both transports until all Kafka offsets reach the broker high-water marks. The p99 is the nearest-rank client acknowledgment latency for the routed QUORUM writes during concurrent Kafka ingestion. Setup, forced failover, graph comparisons and alert checks run outside the timed region.
+
+The test observed a replicated graph transition while the Kafka group offset still preceded the message, killed the leader, and verified redelivery on its successor without another WAL transition. Repeated TTL extensions and a conflicting duplicate volume update preserved the original state. An isolated QUORUM consumer left its offset unchanged after a local append. In a separate ASYNC run its offset advanced after local durability and the replicas converged on heal. Snapshot recovery, all twelve logical checksums, tenant-specific reads and exact edge versions were checked against the expected workload and the Phase 1 brute-force replay.
+
+The lag watermark measures the gap between the local durable tail and majority commit. A full watermark produced `RESOURCE_EXHAUSTED` and Kafka pause/resume. Both healthy followers served routed reads on each shard and the leader served a watermark that neither follower had reached. A changed etcd pin was applied to a previously unused tenant. Live state migration across shards remains a separate operational step.
 
 ## Phase 6 verification
 
