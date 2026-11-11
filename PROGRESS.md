@@ -1,6 +1,36 @@
 # Milestone status
 
-Phase 4 passed the layered HDT and Euler tour forest gate. Phases 5–9 are unfinished.
+Phase 5 passed the single-node service, durability and recovery gate. Phases 6–9 are unfinished.
+
+## Phase 5 verification
+
+Linux amd64, Debian development image, GCC 12.2.0, CMake Release. Commands below use the image produced by `docker build -f Dockerfile.dev -t fraud-ring-phase5 .`. The smoke numbers are single runs with one sequential client over loopback TCP and a local Docker filesystem.
+
+```text
+> docker run --rm -w /workspace/build fraud-ring-phase5 ctest --output-on-failure
+100% tests passed, 0 tests failed out of 44
+Total Test time (real) =   5.62 sec
+
+> docker run --rm fraud-ring-phase5 ./build/storage_tests --gtest_filter=Wal.*
+recovery_cases=75 recovered_lsn=1 state_and_wal=identical
+[  PASSED  ] 6 tests.
+
+> docker run --rm fraud-ring-phase5 ./build/phase5_determinism
+PASS records=500000 fresh_replays=2 midpoint_lsn=250000 restart_tail=250000 duplicates=12887 query_comparisons=2586 snapshot_bytes=3242 sha256=1f68c23bf36668a9180e194264c84ce6988a8bb9c47b7b6f1e919018fd186889 elapsed_s=9.55877
+upsert=168547 delete=49936 update=131485 tick=62674 expire=74870 suppress=6246 restore=6242
+
+> docker run --rm fraud-ring-phase5 ./build/phase5_smoke
+PASS engine=hdt public_rpcs=9 metrics_http=200 crash_restart=pass sync_writes=500 elapsed_s=4.48228 writes_per_s=111.55 p50_ms=5.58432 p99_ms=46.3371 wal_bytes=66776
+
+> docker run --rm fraud-ring-phase5 ./build/phase5_smoke lct
+PASS engine=lct public_rpcs=9 metrics_http=200 crash_restart=pass sync_writes=500 elapsed_s=4.67468 writes_per_s=106.959 p50_ms=5.94025 p99_ms=44.2836 wal_bytes=67820
+```
+
+The torn-tail sweep tries every nonempty proper prefix of the final 75-byte frame and a complete frame with a bad CRC. Each restart returns the same previous LSN, graph aggregate and WAL bytes. Separate tests preserve interior damage for inspection, reject unsupported headers, verify failed writes stay invisible, exercise concurrent admissions and deduplication, and restart on either side of the snapshot-to-archive rename.
+
+The determinism gate compares two complete replays against a third process killed with SIGKILL immediately after its frame-boundary snapshot at LSN 250,000. The third instance restores the snapshot and applies exactly 250,000 tail records. All three final snapshot files match byte for byte. Checks cover connected pairs, aggregates, zero/partial/full subgraphs, historical audits and subsequent duplicate delivery and expiry scheduling. The digest is SHA-256 of the canonical logical payload.
+
+The smoke benchmark launches the actual server, consumes a live streamed alert, queries Engine A, and verifies expiry on idle tenants. It scrapes Prometheus metrics over HTTP, kills the server after acknowledged writes, restarts it, and checks the graph, producer high-water mark and archived audit history. Latency percentiles cover synchronous UpdateVertex calls including gRPC and local durability. WAL byte totals also include setup traffic and periodic ticks.
 
 ## Phase 4 verification
 

@@ -10,4 +10,4 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
 WORKDIR /workspace
 COPY . .
 ENV CMAKE_GENERATOR=Ninja
-RUN cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build --output-on-failure
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel 3 && ctest --test-dir build --output-on-failure

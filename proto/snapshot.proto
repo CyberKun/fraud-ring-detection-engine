@@ -1,0 +1,9 @@
+syntax = "proto3";
+package fraud.disk;
+message Policy { uint64 high=1; uint64 low=2; uint64 min_accounts=3; double min_ratio=4; uint64 cooldown=5; }
+message Vertex { uint64 id=1; uint64 volume=2; bool flagged=3; bool suppressed=4; optional uint64 cooldown=5; }
+message Edge { uint64 u=1; uint64 v=2; uint32 type=3; uint64 handle=4; uint64 version=5; uint64 expiry=6; bool shadow=7; }
+message Deadline { uint64 expiry=1; uint64 handle=2; uint64 version=3; }
+message Sequence { uint64 producer=1; uint64 sequence=2; }
+message Tenant { uint64 id=1; uint64 epoch=2; uint64 lsn=3; uint64 time=4; uint64 next_handle=5; uint64 total_volume=6; Policy policy=7; repeated Vertex vertices=8; repeated Edge edges=9; repeated Deadline deadlines=10; repeated Sequence sequences=11; }
+message Snapshot { uint32 format=1; uint64 epoch=2; uint64 applied_lsn=3; uint64 time=4; repeated Tenant tenants=5; uint64 committed_lsn=6; Policy default_policy=7; uint32 vertex_capacity=8; fixed32 boundary_crc=9; }

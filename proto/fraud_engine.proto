@@ -1,0 +1,35 @@
+syntax = "proto3";
+package fraud.rpc;
+
+message ProducerSequence { uint64 producer_id = 1; uint64 sequence = 2; }
+message UpsertEdgeRequest { uint64 tenant_id=1; uint64 u=2; uint64 v=3; uint32 edge_type=4; uint64 expiry_ms=5; ProducerSequence source=6; }
+message DeleteEdgeRequest { uint64 tenant_id=1; uint64 u=2; uint64 v=3; uint32 edge_type=4; ProducerSequence source=5; }
+message UpdateVertexRequest { uint64 tenant_id=1; uint64 vertex_id=2; uint64 volume=3; bool is_flagged=4; ProducerSequence source=5; }
+message MutationResponse { uint64 epoch=1; uint64 applied_lsn=2; bool alert_triggered=3; bool duplicate=4; }
+message ConnectedRequest { uint64 tenant_id=1; uint64 u=2; uint64 v=3; }
+message ConnectedResponse { bool connected=1; uint64 applied_lsn=2; string replica_role=3; }
+message ComponentStatsRequest { uint64 tenant_id=1; uint64 vertex_id=2; }
+message ComponentStatsResponse { uint64 vertex_count=1; uint64 account_count=2; uint64 volume=3; uint64 flagged_accounts=4; double flagged_ratio=5; uint64 applied_lsn=6; }
+message SubgraphRequest { uint64 tenant_id=1; uint64 vertex_id=2; uint32 max_nodes=3; }
+enum EntityType { ACCOUNT=0; CARD=1; DEVICE=2; }
+message Vertex { uint64 vertex_id=1; EntityType entity_type=2; uint64 volume=3; bool is_flagged=4; }
+message Edge { uint64 u=1; uint64 v=2; uint32 edge_type=3; uint64 handle=4; uint64 version=5; uint64 expiry_ms=6; }
+message SubgraphResponse { repeated Vertex vertices=1; repeated Edge edges=2; bool truncated=3; uint64 total_vertices=4; uint64 applied_lsn=5; }
+message SubscribeAlertsRequest { uint64 tenant_id=1; }
+message AlertEvent { uint64 tenant_id=1; uint64 vertex_id=2; uint64 epoch=3; uint64 lsn=4; uint64 event_time_ms=5; ComponentStatsResponse stats=6; }
+message AuditAtRequest { uint64 tenant_id=1; uint64 vertex_id=2; uint64 timestamp_ms=3; uint32 max_nodes=4; }
+message AuditAtResponse { ComponentStatsResponse stats=1; SubgraphResponse subgraph=2; optional uint64 first_alert_timestamp_ms=3; }
+message HealthRequest {}
+message ShardHealth { uint32 shard_id=1; string replica_role=2; uint64 epoch=3; uint64 applied_lsn=4; uint64 lag=5; double ingestion_rate=6; }
+message ClusterHealthResponse { repeated ShardHealth shards=1; }
+service FraudEngine {
+ rpc UpsertEdge(UpsertEdgeRequest) returns (MutationResponse);
+ rpc DeleteEdge(DeleteEdgeRequest) returns (MutationResponse);
+ rpc UpdateVertex(UpdateVertexRequest) returns (MutationResponse);
+ rpc Connected(ConnectedRequest) returns (ConnectedResponse);
+ rpc ComponentStats(ComponentStatsRequest) returns (ComponentStatsResponse);
+ rpc GetComponentSubgraph(SubgraphRequest) returns (SubgraphResponse);
+ rpc SubscribeAlerts(SubscribeAlertsRequest) returns (stream AlertEvent);
+ rpc AuditAt(AuditAtRequest) returns (AuditAtResponse);
+ rpc GetClusterHealth(HealthRequest) returns (ClusterHealthResponse);
+}

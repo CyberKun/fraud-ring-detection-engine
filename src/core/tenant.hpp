@@ -17,6 +17,16 @@ struct Batch {
     std::vector<Event> records;
     std::vector<Alert> alerts;
 };
+struct SavedVertex { Id id; Weight weight; bool suppressed; std::optional<Time> cooldown; };
+struct TenantImage {
+    Id tenant,epoch,lsn,next_handle,total_volume;
+    Time time;
+    Policy policy;
+    std::vector<SavedVertex> vertices;
+    std::vector<EdgeRecord> edges;
+    std::vector<Deadline> deadlines;
+    std::vector<std::pair<Id,Id>> sequences;
+};
 
 // Single-writer tenant projection. apply_record consumes trusted ordered records.
 // The service owns shard-wide LSN allocation and eventual durable publication.
@@ -217,6 +227,56 @@ public:
     Tenant(Id tenant, Policy policy, Engine engine)
         : tenant_(tenant), policy_(policy), engine_(std::move(engine)) {}
     const Engine& engine() const { return engine_; }
+    std::size_t suppressed_count() const {
+        return std::count_if(vertices_.begin(),vertices_.end(),[](auto& entry){ return entry.second.suppressed; });
+    }
+    TenantImage image() const {
+        TenantImage s{tenant_,epoch_,lsn_,next_handle_,total_volume_,time_,policy_};
+        for (const auto& [id,v]:vertices_) s.vertices.push_back({id,v.weight,v.suppressed,v.last_alert});
+        std::sort(s.vertices.begin(),s.vertices.end(),[](auto& a,auto& b){return a.id<b.id;});
+        for (const auto& [h,e]:edges_) {
+            s.edges.push_back(e);
+            s.deadlines.push_back({e.expiry,h,e.version});
+        }
+        std::sort(s.edges.begin(),s.edges.end(),[](auto& a,auto& b){return a.handle<b.handle;});
+        std::sort(s.deadlines.begin(),s.deadlines.end());
+        s.sequences.assign(sequences_.begin(),sequences_.end());
+        std::sort(s.sequences.begin(),s.sequences.end());
+        return s;
+    }
+    // Load into a fresh projection. The caller discards it on any error.
+    bool restore(const TenantImage& s) {
+        if (s.tenant!=tenant_ || !s.policy.valid() || !s.next_handle || !vertices_.empty() ||
+            s.vertices.size()>engine_.remaining_vertices()) return false;
+        policy_=s.policy;
+        for (const auto& v:s.vertices) {
+            if (!valid(v.id) || vertices_.contains(v.id) || v.weight.volume>UINT64_MAX-total_volume_ ||
+                (v.cooldown && *v.cooldown>s.time) || (v.weight.flagged && entity(v.id)!=Entity::account) ||
+                (v.suppressed && entity(v.id)==Entity::account)) return false;
+            mutate(VertexUpdate{v.id,v.weight},false);
+            vertices_.at(v.id).suppressed=v.suppressed;
+            vertices_.at(v.id).last_alert=v.cooldown;
+        }
+        if (total_volume_!=s.total_volume || s.deadlines.size()!=s.edges.size()) return false;
+        for (const auto& e:s.edges) {
+            if (!e.handle || e.handle>=s.next_handle || !e.version || e.key!=e.key.normalized() ||
+                !vertices_.contains(e.key.u) || !vertices_.contains(e.key.v) || filtered(e.key)!=e.shadow ||
+                !keys_.emplace(e.key,e.handle).second || !edges_.emplace(e.handle,e).second) return false;
+            for (Id v:endpoints(e.key)) vertices_.at(v).live.insert(e.handle);
+            if (!e.shadow) link(edges_.at(e.handle));
+        }
+        std::optional<Deadline> prev;
+        for (auto d:s.deadlines) {
+            auto it=edges_.find(d.handle);
+            if ((prev && d<=*prev) || it==edges_.end() || it->second.expiry!=d.expiry ||
+                it->second.version!=d.version) return false;
+            wheel_.schedule(d);
+            prev=d;
+        }
+        for (auto [p,q]:s.sequences) if (!sequences_.emplace(p,q).second) return false;
+        next_handle_=s.next_handle; epoch_=s.epoch; lsn_=s.lsn; time_=s.time;
+        return true;
+    }
     std::size_t active_degree(Id v) const {
         auto it = vertices_.find(v);
         return it == vertices_.end() ? 0 : it->second.live.size();
@@ -233,7 +293,23 @@ public:
     std::optional<Subgraph> subgraph(Id u, std::size_t max_k) const {
         auto a = engine_.stats(u);
         if (!a) return {};
-        auto ids = engine_.component_vertices(u,max_k);
+        // Stable handle-ordered BFS also fixes the membership of truncated
+        // results across different forest shapes and snapshot reconstruction.
+        std::vector<Id> ids;
+        std::unordered_set<Id> seen;
+        if (max_k>=a->vertex_count) {
+            ids=engine_.component_vertices(u,max_k);
+            if (!ids.empty()) std::sort(ids.begin()+1,ids.end());
+        } else if (max_k) { ids.push_back(u); seen.insert(u); }
+        for (std::size_t i=0;i<ids.size() && max_k<a->vertex_count && ids.size()<max_k;++i) {
+            Id v=ids[i];
+            for (Handle h:vertices_.at(v).structural) {
+                const auto k=edges_.at(h).key;
+                Id other=k.u==v ? k.v : k.u;
+                if (seen.insert(other).second) ids.push_back(other);
+                if (ids.size()==max_k) break;
+            }
+        }
         std::unordered_set<Id> selected(ids.begin(),ids.end());
         Subgraph out{{},{},a->vertex_count,ids.size() < a->vertex_count};
         for (Id v : ids) {
@@ -248,8 +324,12 @@ public:
     }
 
     // first_lsn may skip positions used by other tenants on this shard.
+    struct DirectApply {
+        template<class F> void operator()(const Payload&,F apply) const { apply(); }
+    };
+    template<class Observer=DirectApply>
     Batch submit(Id epoch, Id first_lsn, Time now, Command command,
-                 std::optional<ProducerSequence> source = {}) {
+                 std::optional<ProducerSequence> source = {}, Observer observe = {}) {
         if (epoch < epoch_ || first_lsn <= lsn_ || now < time_) return {Status::stale_position};
         if (source && sequences_.contains(source->producer) &&
             sequences_.at(source->producer) >= source->sequence) return {Status::duplicate};
@@ -266,7 +346,7 @@ public:
         Batch result;
         auto emit = [&](Payload p, std::optional<ProducerSequence> s = {}) {
             result.records.push_back({tenant_,epoch,first_lsn++,now,s,p});
-            apply(result.records.back(),true,result.alerts);
+            observe(p,[&]{ apply(result.records.back(),true,result.alerts); });
         };
         auto transition = [&](Id v) {
             if (entity(v) == Entity::account) return;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/types.hpp"
+#include "engines/memory.hpp"
 #include <unordered_map>
 #include <unordered_set>
 
@@ -18,6 +19,13 @@ public:
     std::size_t remaining_vertices() const { return capacity_ - ids_.size(); }
     std::size_t dummy_count() const { return capacity_ - 1 - free_.size(); }
     std::size_t node_slots() const { return nodes_.size(); }
+    std::size_t storage_bytes() const {
+        auto bytes=sizeof(*this)+nodes_.capacity()*sizeof(Node)+adj_.capacity()*sizeof(Adj)
+                  +(free_.capacity()+ancestors_.capacity())*sizeof(Index)+external_.capacity()*sizeof(Id)
+                  +marked_.capacity()/8+table_bytes(ids_)+table_bytes(edges_);
+        for (const auto& a:adj_) bytes+=table_bytes(a.tree)+table_bytes(a.extra);
+        return bytes;
+    }
     bool tree_edge(Handle h) const;
     struct Counters {
         Id repairs{}, repair_vertices{}, candidates{}, swaps{}, promotions{}, peak_dummies{};

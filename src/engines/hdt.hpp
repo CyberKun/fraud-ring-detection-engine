@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engines/ett.hpp"
+#include "engines/memory.hpp"
 #include <set>
 #include <unordered_map>
 
@@ -23,6 +24,16 @@ public:
         unsigned highest_level{};
     };
     const Counters& counters() const { return counters_; }
+    std::size_t storage_bytes() const {
+        auto bytes=sizeof(*this)+levels_.capacity()*sizeof(Level)+external_.capacity()*sizeof(Id)
+                  +table_bytes(ids_)+table_bytes(edges_);
+        for (const auto& level:levels_) {
+            bytes+=level.forest.slab_bytes()+table_bytes(level.incident);
+            for (const auto& [v,handles]:level.incident) bytes+=table_bytes(handles);
+        }
+        for (const auto& [h,e]:edges_) bytes+=e.darts.capacity()*sizeof(EulerTourForest::Darts);
+        return bytes;
+    }
     struct EdgeInfo { unsigned level; bool tree; };
     std::optional<EdgeInfo> edge_info(Handle) const;
     bool level_connected(unsigned,Id,Id) const;

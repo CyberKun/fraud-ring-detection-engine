@@ -30,4 +30,29 @@ Engine C is available as `Tenant<HdtEngine> graph(tenant_id, policy, HdtEngine(v
 
 Run `phase4_fuzz tier1` and `phase4_fuzz tier2` in the development image to verify Engine C. Tier 1 runs the 100,000-mutation workload plus 8,192 adversarial mutations. Tier 2 compares full probed components and connectivity online after every input batch, with Engine A at sampled checkpoints. Both tiers use the same trace-reduction and replay interface as Phase 3.
 
-Phases 5–9 are unfinished, including durable storage, replication and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)
+### Single-node service
+
+The Linux service uses HDT by default. Select LCT with `--engine lct`. The following commands publish gRPC and Prometheus on the host loopback interface and keep state in a Docker volume.
+
+```sh
+docker build -f Dockerfile.dev -t fraud-ring-phase5 .
+docker run --rm -p 127.0.0.1:50051:50051 -p 127.0.0.1:9091:9091 -v fraud-ring-data:/data fraud-ring-phase5 ./build/fraud_server --data /data --listen 0.0.0.0:50051 --metrics-address 0.0.0.0
+```
+
+Use [the public protobuf contract](proto/fraud_engine.proto) for clients and scrape `http://127.0.0.1:9091/metrics`. The service exposes all nine public RPCs over plaintext gRPC. A successful mutation returns its durable frame boundary. Concurrent requests can share one fsync. A retried producer sequence returns the current durable watermark with `duplicate=true`. Unknown vertices return false for connectivity and `NOT_FOUND` for stats, subgraph and audit. Live subscribers receive committed alerts from subscription onward. A subscriber that falls behind the 4,096-alert buffer receives `RESOURCE_EXHAUSTED`.
+
+The writer assigns monotonic event times and ticks active tenants every 100 ms, including tenants with no new requests. Adjust the interval with `--tick-ms`. The default snapshot interval is 60 seconds and is configurable with `--snapshot-ms`. One process owns each data directory. A storage failure makes the shard unavailable until restart.
+
+`active.wal` contains little-endian FRE1 frames with IEEE CRC32. Recovery checks the 16 MiB payload and 65,536-record limits before allocating. It repairs a torn active tail and refuses interior damage, unsupported versions, and damaged sealed archives. The FRS1 snapshot contains a versioned canonical protobuf payload and CRC32. Snapshot publication syncs the temporary file and its directory before the covered active segment is renamed to an archive. Startup reads retained WAL for historical queries and applies only the suffix after the snapshot to the live graph.
+
+Phase 5 retains the full audit history on disk and in memory. Each historical query builds Engine A over the requested tenant's prefix. Disk usage and audit cost therefore grow with retained history. The operation histograms measure engine operation time. Separate histograms measure fsync and snapshot duration. The engine-memory gauge counts live index container storage and excludes allocator overhead.
+
+```sh
+docker run --rm -w /workspace/build fraud-ring-phase5 ctest --output-on-failure
+docker run --rm fraud-ring-phase5 ./build/storage_tests --gtest_filter=Wal.*
+docker run --rm fraud-ring-phase5 ./build/phase5_determinism
+docker run --rm fraud-ring-phase5 ./build/phase5_smoke
+docker run --rm fraud-ring-phase5 ./build/phase5_smoke lct
+```
+
+Phases 6–9 are unfinished, including replication, routing, Kafka ingestion, and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)

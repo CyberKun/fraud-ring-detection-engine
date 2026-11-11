@@ -19,6 +19,10 @@ foreach(phase IN ITEMS 3 4)
   target_link_libraries(phase${phase}_fuzz PRIVATE fraud_core)
 endforeach()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_subdirectory(src/service)
+endif()
+
 if(BUILD_TESTING)
   find_package(GTest REQUIRED)
   add_executable(core_tests tests/core_test.cpp tests/offline_test.cpp tests/lct_test.cpp tests/hdt_test.cpp)

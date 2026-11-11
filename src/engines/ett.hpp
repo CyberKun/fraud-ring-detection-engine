@@ -29,6 +29,10 @@ public:
     bool matches(Darts darts,Index u,Index v,Handle h,bool exact) const;
     bool has_incident(Index v) const { return nodes_[loops_[v]].local_flags & nontree; }
     std::size_t dart_count() const { return nodes_.size()-1-loops_.size()-free_.size(); }
+    std::size_t slab_bytes() const {
+        return nodes_.capacity()*sizeof(Node)+weights_.capacity()*sizeof(Weights)+
+               (loops_.capacity()+free_.capacity())*sizeof(Index);
+    }
 private:
     struct Node {
         Index left{}, right{}, parent{}, size{}, count{}, from{}, to{};
