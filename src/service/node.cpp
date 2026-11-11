@@ -38,6 +38,45 @@ Node::Node(fs::path dir,Options opts):dir_(fs::absolute(dir)),options_(opts) {
         recover();
     } catch (...) { ::close(lock_fd_); throw; }
 }
+Batch Node::propose(Id epoch,Id tenant,Time wall,Command command,std::optional<ProducerSequence> source) {
+    std::lock_guard lock(mutex_);
+    epoch_=epoch;
+    auto batch=prepare(tenant,std::max(time_,wall),command,source,lsn_+1);
+    if(batch.status==Status::ok) record_frame(batch.records);
+    return batch;
+}
+void Node::account_wal_write(storage::WriteStats stats) {
+    std::lock_guard lock(mutex_);
+    bytes_+=stats.bytes; fsync_.observe(stats.sync_seconds);
+}
+void Node::replay(const storage::Frame& frame) {
+    std::lock_guard lock(mutex_);
+    if(frame.front().lsn!=lsn_+1) throw storage::Error("projection prefix mismatch");
+    std::vector<Alert> alerts;
+    for(auto& event:frame) {
+        Status status{};
+        std::visit([&](auto& tenant){
+            apply_measured(tenant,event.payload,[&]{status=tenant.apply_record(event,alerts);});
+        },model(event.tenant));
+        if(status!=Status::ok && status!=Status::duplicate) throw storage::Error("replicated transition invalid");
+    }
+    record_frame(frame); ++ingested_;
+    for(auto& alert:alerts) {
+        alerts_.push_back(alert); ++alert_end_;
+        if(alerts_.size()>4096) alerts_.pop_front();
+    }
+    alert_cv_.notify_all();
+}
+void Node::reset() {
+    std::lock_guard lock(mutex_);
+    models_.clear(); history_.clear(); alerts_.clear(); lsn_=time_=boundary_crc_=0; epoch_=1;
+}
+std::vector<Id> Node::tenant_ids() const {
+    std::lock_guard lock(mutex_);
+    std::vector<Id> ids;
+    for(auto& [id,m]:models_) ids.push_back(id);
+    return ids;
+}
 Node::~Node(){ if(lock_fd_>=0) ::close(lock_fd_); }
 void Node::check() const {
     if (poisoned_) throw storage::Error("shard unavailable after storage error; restart required");
@@ -128,18 +167,22 @@ void Node::persist(const std::vector<storage::Frame>& frames,const std::vector<A
     }
     if(!alerts.empty()) alert_cv_.notify_all();
 }
+template<class T,class F>
+void Node::apply_measured(T& t,const Payload& p,F apply) {
+    std::optional<Op> op;
+    if(auto x=std::get_if<EdgeUpsert>(&p)) op=t.edge(x->key)?extend:insert;
+    else if(std::holds_alternative<Expire>(p)) op=expire;
+    else if(std::holds_alternative<EdgeDelete>(p)) op=manual;
+    else if(std::holds_alternative<VertexUpdate>(p)) op=update;
+    auto start=Clock::now(); apply();
+    if(op) latency_[*op].observe(elapsed(start));
+    if(std::holds_alternative<HubRestore>(p) || std::holds_alternative<HubSuppress>(p)) ++hub_transitions_;
+}
 Batch Node::prepare(Id id,Time now,Command c,std::optional<ProducerSequence> source,Id first) {
     bool fresh=!models_.contains(id);
     auto b=std::visit([&](auto& t){
         auto observer=[&](const Payload& p,auto apply) {
-            std::optional<Op> op;
-            if(auto x=std::get_if<EdgeUpsert>(&p)) op=t.edge(x->key)?extend:insert;
-            else if(std::holds_alternative<Expire>(p)) op=expire;
-            else if(std::holds_alternative<EdgeDelete>(p)) op=manual;
-            else if(std::holds_alternative<VertexUpdate>(p)) op=update;
-            auto start=Clock::now(); apply();
-            if(op) latency_[*op].observe(elapsed(start));
-            if(std::holds_alternative<HubRestore>(p) || std::holds_alternative<HubSuppress>(p)) ++hub_transitions_;
+            apply_measured(t,p,apply);
         };
         return t.submit(epoch_,first,now,c,source,observer);
     },model(id));

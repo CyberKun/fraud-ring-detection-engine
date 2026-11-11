@@ -1,0 +1,14 @@
+services:
+  etcd:
+    image: fraud-ring-phase6
+    pull_policy: never
+    command: ["etcd", "--data-dir", "/tmp/etcd", "--listen-client-urls", "http://0.0.0.0:2379", "--advertise-client-urls", "http://etcd:2379"]
+  chaos:
+    image: fraud-ring-phase6
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on: [etcd]
+    environment:
+      PHASE6_ETCD_HOST: etcd
+    command: ["python3", "bench/phase6_chaos.py", "./build/fraud_replica"]

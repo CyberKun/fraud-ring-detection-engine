@@ -78,23 +78,24 @@ Payload payload(Reader& r,Id tag) {
 }
 struct Header { std::size_t size,count; Id epoch,first; };
 constexpr std::array<std::uint8_t,4> magic{'F','R','E','1'};
-Header header(int fd,off_t pos,off_t end) {
-    if (end-pos<32) throw TornFrame("short header");
-    std::array<std::uint8_t,32> bytes;
-    read_at(fd,pos,bytes);
+Header parse_header(std::span<const std::uint8_t> bytes,Id available) {
+    if (bytes.size()<32) throw TornFrame("short header");
     Reader r{bytes};
     if (r.get(4)!=0x31455246) throw TornFrame("invalid FRE1 magic");
     if (r.get(2)!=1 || r.get(2)!=0) throw BadFrame("unsupported FRE1 version or flags");
     Header h{r.get(4),r.get(4),r.get(8),r.get(8)};
     if (!h.count || h.count>max_records || h.size>max_payload || h.count>h.size/22 ||
         !h.first || !h.epoch || h.count-1>UINT64_MAX-h.first) throw BadFrame("invalid FRE1 limits");
-    if (static_cast<Id>(end-pos-32)<h.size+4) throw TornFrame("short payload or checksum");
+    if (available-32<h.size+4) throw TornFrame("short payload or checksum");
     return h;
 }
-Frame decode(int fd,off_t pos,Header h) {
-    Bytes bytes(32+h.size+4);
+Header header(int fd,off_t pos,off_t end) {
+    if(end-pos<32) throw TornFrame("short header");
+    std::array<std::uint8_t,32> bytes;
     read_at(fd,pos,bytes);
-    std::span<const std::uint8_t> all=bytes;
+    return parse_header(bytes,end-pos);
+}
+Frame contents(std::span<const std::uint8_t> all,Header h) {
     Reader crc{all.last(4)};
     if (checksum(all.first(32+h.size))!=crc.get(4)) throw TornFrame("bad WAL CRC32");
     Reader r{all.subspan(32,h.size)};
@@ -115,6 +116,11 @@ Frame decode(int fd,off_t pos,Header h) {
     if (!r.data.empty()) throw BadFrame("trailing payload bytes");
     return frame;
 }
+Frame decode(int fd,off_t pos,Header h) {
+    Bytes bytes(36+h.size);
+    read_at(fd,pos,bytes);
+    return contents(bytes,h);
+}
 // A damaged length can swallow the following frame. Look for a fully
 // decodable frame after the damage before classifying it as a torn tail.
 bool valid_suffix(int fd,off_t pos,off_t end) {
@@ -134,6 +140,19 @@ bool valid_suffix(int fd,off_t pos,off_t end) {
 }
 std::uint32_t checksum(std::span<const std::uint8_t> bytes) {
     return ::crc32_z(0,bytes.data(),bytes.size());
+}
+Frame decode_frame(std::span<const std::uint8_t> bytes) {
+    auto h=parse_header(bytes,bytes.size());
+    if(bytes.size()!=36+h.size) throw Error("replication frame length");
+    auto frame=contents(bytes,h);
+    for(std::size_t i=1;i<frame.size();++i)
+        if(frame[i].time<frame[i-1].time) throw Error("replication frame time decreased");
+    return frame;
+}
+void Wal::truncate(std::uint64_t bytes) {
+    if(bytes>static_cast<Id>(length(fd_))) throw Error("cannot extend WAL by truncation");
+    if(::ftruncate(fd_,bytes)) io("truncate");
+    sync(fd_);
 }
 Bytes encode(const Frame& frame) {
     if (frame.empty() || frame.size()>max_records) throw Error("WAL record count cap");

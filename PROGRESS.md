@@ -1,6 +1,28 @@
 # Milestone status
 
-Phase 5 passed the single-node service, durability and recovery gate. Phases 6–9 are unfinished.
+Phase 6 passed the replication, election and recovery gate. Phases 7 through 9 are unfinished.
+
+## Phase 6 verification
+
+The gate uses three Linux replica processes, independent fsynced data directories, a real etcd v3 lease server and controllable TCP connections for both peer RPCs and etcd. The lease TTL was two seconds. In scenario A the test killed the leader during concurrent writes and held back the advanced follower until the empty candidate acquired the lease. The candidate rejected a client write with only its own promise. Its first successful quorum acknowledgment includes restarting the advanced voter and fetching its frames.
+
+```text
+> ctest --output-on-failure
+100% tests passed, 0 tests failed out of 48
+Total Test time (real) = 39.48 sec
+
+> docker compose -f compose.phase6.yml up --build --abort-on-container-exit --exit-code-from chaos
+A prekill_acknowledged=25 lost=0 election_ms=2477.3 first_quorum_ack_ms=3118.2 fetched_frames=26
+A follower_lag_lsn samples=160 median=0 p99=3 max=3 converged_lsn=80
+B partition_election_ms=1942.3 first_quorum_ack_ms=2124.3 truncations=1 end_lsn=83 logical_sha256=c9b3805e6deed416390e5aa6ffee2241910abcec51df98ee0061bb1c3efb2c6c wal_sha256=71ab9fe0637aba4e378766255459e499c3ab15b7c1ebd426ebf65b53e599b037
+Idle expiry: isolated follower watermark held; leader Tick/Expire replayed on heal
+```
+
+Election time runs from the fault to observation of the new etcd lease owner. The second timer ends at a successful client acknowledgment. Lag samples compare the acknowledged LSN with each follower's applied LSN after 80 sequential new or retried requests. These are single-host measurements.
+
+In scenario B an isolated leader acknowledged one ASYNC write and retained a second, unacknowledged QUORUM frame. The remaining replicas committed a conflicting tail in the higher epoch. On heal, all three matched the independent graph and aggregate expectations, canonical logical SHA-256 and exact WAL bytes. A restarted replica rejected the stale append. The journal unit tests verified durable promises across restart and a persistent fatal error on attempted truncation below the commit boundary.
+
+Replicas retain the full WAL for catch-up and audit. Restart and election replay costs grow with retained history.
 
 ## Phase 5 verification
 

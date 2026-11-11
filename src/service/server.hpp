@@ -6,9 +6,16 @@
 
 namespace fraud::service {
 Time wall_ms();
+class Replication {
+public:
+    virtual Mutation write(Id,Command,std::optional<ProducerSequence>,rpc::AckMode)=0;
+    virtual std::unique_lock<std::mutex> read_guard(Id min_lsn,std::string& role)=0;
+    virtual void health(rpc::ShardHealth&,bool checksum)=0;
+    virtual ~Replication()=default;
+};
 class Api final : public rpc::FraudEngine::Service {
 public:
-    explicit Api(Node& node):node_(node){}
+    explicit Api(Node& node,Replication* group=nullptr):node_(node),group_(group){}
     grpc::Status UpsertEdge(grpc::ServerContext*,const rpc::UpsertEdgeRequest*,rpc::MutationResponse*) override;
     grpc::Status DeleteEdge(grpc::ServerContext*,const rpc::DeleteEdgeRequest*,rpc::MutationResponse*) override;
     grpc::Status UpdateVertex(grpc::ServerContext*,const rpc::UpdateVertexRequest*,rpc::MutationResponse*) override;
@@ -20,10 +27,11 @@ public:
     grpc::Status GetClusterHealth(grpc::ServerContext*,const rpc::HealthRequest*,rpc::ClusterHealthResponse*) override;
 private:
     Node& node_;
+    Replication* group_;
 };
 class MetricsHttp {
 public:
-    MetricsHttp(Node&,std::uint16_t port,std::string address="127.0.0.1");
+    MetricsHttp(Node&,std::uint16_t port,std::string address="127.0.0.1",std::function<std::string()> extra={});
     ~MetricsHttp();
     std::uint16_t port() const {return port_;}
 private:

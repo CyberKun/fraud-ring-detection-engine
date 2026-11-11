@@ -32,6 +32,13 @@ struct Histogram {
 class Node {
 public:
     Node(fs::path dir,Options={});
+    // Cluster projections are rebuilt from the independently fsynced replica journal.
+    explicit Node(Options opts):options_(opts){}
+    Batch propose(Id epoch,Id tenant,Time wall,Command,std::optional<ProducerSequence>);
+    void replay(const storage::Frame&);
+    void account_wal_write(storage::WriteStats);
+    void reset();
+    std::vector<Id> tenant_ids() const;
     ~Node();
     Node(const Node&)=delete;
     Mutation mutate(Id tenant,Time wall_ms,Command,std::optional<ProducerSequence> = {});
@@ -83,6 +90,7 @@ private:
     Id bytes_{},hub_transitions_{},ingested_{};
     Clock::time_point started_{Clock::now()};
     Model& model(Id);
+    template<class T,class F> void apply_measured(T&,const Payload&,F);
     void recover();
     void check() const;
     storage::Image image_locked() const;

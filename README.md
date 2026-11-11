@@ -56,3 +56,22 @@ docker run --rm fraud-ring-phase5 ./build/phase5_smoke lct
 ```
 
 Phases 6–9 are unfinished, including replication, routing, Kafka ingestion, and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)
+
+### Replicated shard
+
+Run one `fraud_replica` process per member with a separate durable directory. Supply the same shard ID, etcd endpoint and three ordered gRPC addresses on each process. The member index is 0, 1 or 2. For example, the first member on a local machine can start with the following command.
+
+```sh
+./build/fraud_replica ./data0 0 0 http://127.0.0.1:2379 3 100 127.0.0.1:5100 127.0.0.1:5101 127.0.0.1:5102 9100
+```
+
+The two time arguments are lease TTL in seconds and leader tick interval in milliseconds. The last argument sets the optional HTTP metrics port. Start the other two members with their respective directory, member index and metrics port. Public and internal gRPC share each member's address. This configuration assumes a trusted network and fixed membership.
+
+Read the local role, promised epoch, last entry epoch, last LSN and commit LSN with `GetClusterHealth`. Route writes to the member reporting `LEADER`. The default acknowledgment mode is `QUORUM`. Setting `mode=ASYNC` permits local durability during a peer partition. A later election can discard that suffix. Pass `min_lsn` on a read to receive `UNAVAILABLE` while a replica is behind. Successful reads return the applied watermark and role in both the response and gRPC trailing metadata.
+
+Replicas retain FRE1 frames for catch-up and historical audit. Recovery rebuilds the committed graph from those frames. Disk usage, replay time and in-memory log storage grow with history length. The chaos suite starts independent replica processes with disposable directories and gives each peer and lease connection a controllable TCP proxy. Run it in Compose with a dedicated etcd service.
+
+```sh
+docker compose -f compose.phase6.yml up --build --abort-on-container-exit --exit-code-from chaos
+docker compose -f compose.phase6.yml down
+```
