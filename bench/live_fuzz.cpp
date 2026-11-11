@@ -2,6 +2,7 @@
 #include "shrink.hpp"
 #include "engines/brute_force.hpp"
 #include "engines/lct.hpp"
+#include "engines/hdt.hpp"
 #include "engines/offline.hpp"
 #include <chrono>
 #include <fstream>
@@ -13,6 +14,7 @@
 
 namespace {
 using namespace fraud;
+constexpr unsigned phase_number=FRAUD_FUZZ_PHASE;
 using Step = std::uint32_t;
 using Trace = std::vector<Step>;
 struct Mode { unsigned tier, vertices; Step mutations; Id seed; };
@@ -29,12 +31,42 @@ Id vertex(Id i) {
     return *encode(type,i);
 }
 struct Input { Command command; Id u,v; };
+Input adversarial(Mode m,Step step) {
+    unsigned p=step%64;
+    Id base=16*(mix(step/64+m.seed)%(m.vertices/16));
+    auto edge=[&](unsigned a,unsigned b,bool remove,unsigned type,Time expiry) {
+        Id u=vertex(base+a),v=vertex(base+b);
+        Key k{u,v,type};
+        Command c=remove ? Command{EdgeDelete{k}} : Command{EdgeUpsert{k,expiry}};
+        return Input{c,u,v};
+    };
+    Time end=step-p+63;
+    if ((step/64)%2==0) {
+        // Build a path and repeatedly bisect the promoted smaller half.
+        if (p<15) return edge(p,p+1,false,7,end);
+        if (p==15) return edge(0,2,false,8,end);
+        if (p<20) {
+            unsigned cut=(16u>>(p-15))-1;
+            return edge(cut,cut+1,true,7,end);
+        }
+        unsigned u=p%14;
+        return edge(u,u+1,p%3==0,7,step+16);
+    }
+    // Two hubs share a shadow edge. Restore them at different times while
+    // renewing some of their incident keys and expiring others.
+    if (!p) return edge(14,15,false,9,end);
+    unsigned hub=p%2 ? 14 : 15;
+    unsigned leaf=((p-1)/2)%12;
+    return edge(hub,leaf,p>=25 && p<49,9,step+32);
+}
 Input generate(Mode m,Step step) {
     Id t=step, bits=mix(t+m.seed);
     if (t<m.vertices) {
         Id v=vertex(t);
         return {VertexUpdate{v,{bits%10000,t%5==0}},v,v};
     }
+    if (phase_number==4 && ((m.tier==1 && t>=100000) || (m.tier==2 && (t/256)%8==7)))
+        return adversarial(m,step);
     unsigned phase=t%64;
     Id base=16*(mix(t/64+m.seed)%(m.vertices/16));
     Id u=vertex(base+bits%12), v=vertex(base+(bits>>8)%12);
@@ -143,6 +175,8 @@ Outcome run(Mode m,const Trace& trace,bool report) {
     Tenant<LctEngine> leader(1,policy,LctEngine(m.vertices));
     std::optional<Tenant<LctEngine>> follower;
     std::optional<Tenant<BruteForce>> oracle;
+    std::optional<Tenant<HdtEngine>> hdt;
+    if (phase_number==4) hdt.emplace(1,policy,HdtEngine(m.vertices));
     if (exact) {
         follower.emplace(1,policy,LctEngine(m.vertices));
         oracle.emplace(1,policy);
@@ -157,12 +191,13 @@ Outcome run(Mode m,const Trace& trace,bool report) {
         auto batch=leader.submit(1,lsn,step,input.command);
         if (batch.status!=Status::ok) return Failure{"submit",step};
         lsn+=batch.records.size();
-        std::vector<Alert> emitted;
+        std::vector<Alert> emitted,hdt_emitted;
         for (auto e : batch.records) {
             Id u=input.u,v=input.v;
             suppress+=std::holds_alternative<HubSuppress>(e.payload);
             restore+=std::holds_alternative<HubRestore>(e.payload);
             expire+=std::holds_alternative<Expire>(e.payload);
+            if (hdt && hdt->apply_record(e,hdt_emitted)!=Status::ok) return Failure{"hdt-replay",step};
             if (exact) {
                 std::vector<Alert> a,b;
                 if (follower->apply_record(e,a)!=Status::ok || oracle->apply_record(e,b)!=Status::ok)
@@ -183,12 +218,24 @@ Outcome run(Mode m,const Trace& trace,bool report) {
                 e.time=e.lsn;
                 auto live=observe(*follower,u,v), bfs=observe(*oracle,u,v);
                 if (!same(live,bfs)) return Failure{"bfs-answer",step};
+                if (hdt) {
+                    auto result=observe(*hdt,u,v);
+                    if (!same(result,bfs)) return Failure{"hdt-bfs-answer",step};
+                    if (!hdt->engine().validate()) return Failure{"hdt-invariants",step};
+                }
                 window.probe(e.time,step,u,v,m.vertices,std::move(bfs));
                 ++audits;
             }
             window.records.push_back(e);
         }
         if (exact && !same_alerts(emitted,batch.alerts)) return Failure{"leader-alerts",step};
+        if (hdt && !same_alerts(hdt_emitted,batch.alerts)) return Failure{"hdt-alerts",step};
+        if (hdt && !exact) {
+            auto b=observe(leader,input.u,input.v), c=observe(*hdt,input.u,input.v);
+            if (!same(b,c)) return Failure{"hdt-lct-answer",step};
+            if ((step%250000==0 || step==trace.back()) && !hdt->engine().validate())
+                return Failure{"hdt-invariants",step};
+        }
         if (exact && (step%512==0 || step==trace.back())) {
             if (!check_msf(leader,known,m.vertices)) return Failure{"kruskal-msf",step};
             ++forest_checks;
@@ -212,6 +259,15 @@ Outcome run(Mode m,const Trace& trace,bool report) {
                  <<" cycle_swaps="<<c.swaps<<" repairs="<<c.repairs<<" repair_vertices="<<c.repair_vertices
                  <<" repair_promotions="<<c.promotions<<" peak_dummies="<<c.peak_dummies
                  <<" kruskal_checks="<<forest_checks<<std::endl;
+        if (hdt) {
+            const auto& h=hdt->engine().counters();
+            std::cout<<"hdt_online_checks="<<(exact ? lsn-1 : trace.size())
+                     <<" searches="<<h.searches<<" levels_traversed="<<h.levels_traversed
+                     <<" candidates_scanned="<<h.candidates<<" tree_promotions="<<h.tree_promotions
+                     <<" nontree_promotions="<<h.nontree_promotions<<" replacements="<<h.replacements
+                     <<" lower_level_replacements="<<h.lower_level_replacements
+                     <<" highest_level="<<h.highest_level<<std::endl;
+        }
     }
     return {};
 }
@@ -258,10 +314,11 @@ int main(int argc,char** argv) {
         }
     }
     if (tier!=1 && tier!=2) {
-        std::cerr<<"usage: phase3_fuzz tier1|tier2 [seed] | replay TRACE\n";
+        std::cerr<<"usage: phase"<<phase_number<<"_fuzz tier1|tier2 [seed] | replay TRACE\n";
         return 2;
     }
     Mode mode{tier,tier==1 ? 200u : 50000u,tier==1 ? 100000u : 10000000u,seed};
+    if (phase_number==4 && tier==1) mode.mutations+=8192;
     if (!replay) {
         trace.resize(mode.mutations);
         std::iota(trace.begin(),trace.end(),0u);
@@ -278,11 +335,11 @@ int main(int argc,char** argv) {
     prefix.erase(std::upper_bound(prefix.begin(),prefix.end(),failure->step),prefix.end());
     if (fails(prefix)) trace=std::move(prefix);
     auto minimal=test::shrink(std::move(trace),fails);
-    auto path="phase3-tier"+std::to_string(tier)+"-"+std::to_string(seed)+".trace";
+    auto path="phase"+std::to_string(phase_number)+"-tier"+std::to_string(tier)+"-"+std::to_string(seed)+".trace";
     std::ofstream file(path);
     dump(file,mode,minimal);
     file.close();
-    std::cerr<<"1-minimal mutations="<<minimal.size()<<" replay: phase3_fuzz replay "<<path<<'\n';
+    std::cerr<<"1-minimal mutations="<<minimal.size()<<" replay: phase"<<phase_number<<"_fuzz replay "<<path<<'\n';
     if (!file) dump(std::cerr,mode,minimal);
     return 1;
 }

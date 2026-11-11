@@ -1,6 +1,33 @@
 # Milestone status
 
-Phase 3 passed the LCT maximum-spanning-forest gate. Phases 4–9 are unfinished.
+Phase 4 passed the layered HDT and Euler tour forest gate. Phases 5–9 are unfinished.
+
+## Phase 4 verification
+
+Linux amd64 Debian development image, GCC 12.2.0, CMake Release, seed 20261111. Timings include generation, mutations, live comparisons and offline verification.
+
+```text
+> docker build -f Dockerfile.dev -t fraud-ring-phase4 .
+> docker run --rm -w /workspace/build fraud-ring-phase4 ctest --output-on-failure
+100% tests passed, 0 tests failed out of 32
+Total Test time (real) =   0.43 sec
+
+> docker run --rm -v "${PWD}:/traces" -w /traces fraud-ring-phase4 /workspace/build/phase4_fuzz tier1
+PASS tier=1 seed=20261111 vertices=200 mutations=108192 records=148308 audits=148308 mismatches=0 elapsed_s=15.637
+expire=36486 suppress=1815 restore=1815 cycle_swaps=42130 repairs=15514 repair_vertices=49648 repair_promotions=10066 peak_dummies=51 kruskal_checks=213
+hdt_online_checks=148308 searches=59258 levels_traversed=83285 candidates_scanned=33540 tree_promotions=24035 nontree_promotions=2265 replacements=31275 lower_level_replacements=4709 highest_level=3
+
+> docker run --rm -v "${PWD}:/traces" -w /traces fraud-ring-phase4 /workspace/build/phase4_fuzz tier2
+PASS tier=2 seed=20261111 vertices=50000 mutations=10000000 records=14145449 audits=4884 mismatches=0 elapsed_s=348.179
+expire=3795651 suppress=174899 restore=174899 cycle_swaps=3554196 repairs=1445965 repair_vertices=4339201 repair_promotions=823381 peak_dummies=1834 kruskal_checks=0
+hdt_online_checks=10000000 searches=6033782 levels_traversed=8313660 candidates_scanned=3112258 tree_promotions=2280170 nontree_promotions=29573 replacements=3082685 lower_level_replacements=473780 highest_level=3
+```
+
+Tier 1 ran 100,000 mixed mutations and 8,192 additional mutations on paths with repeated bridge cuts and pairs of hubs cycling through suppression and restoration. After every WAL record it compared the probed component's aggregate, full induced subgraph and pair connectivity across BFS, offline replay, LCT and HDT. The live engines also checked alert parity. The validator checked all forests' size bounds, parent pointers, heap order, tour sizes, aggregates, subtree flags, dart levels and non-tree list membership after every record.
+
+Tier 2 compared the LCT and HDT answers after all 10 million input batches. Engine A verified sampled historical checkpoints over one continuous tenant history. HDT counters count individual promoted edges, visited search levels and inspected non-tree candidates. A lower-level replacement is a crossing edge found below the deleted tree edge's level.
+
+Seven focused ETT/HDT tests also passed in a Debug build with AddressSanitizer, UndefinedBehaviorSanitizer and assertions enabled. They check cyclic tour continuity on reroot/cut, exact-level flags on both darts, promotion of internal non-tree edges, replacement restricted to the discovered level and below, and termination at the first crossing candidate. The deepest level reached by the recorded fuzz workloads was 3.
 
 ## Phase 3 verification
 

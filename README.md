@@ -26,4 +26,8 @@ docker run --rm -v "${PWD}:/traces" -w /traces fraud-ring-phase3 /workspace/buil
 
 Each tier accepts an optional numeric seed. On a mismatch the runner removes groups of input mutations and then individual mutations while preserving the failing check. The resulting trace is 1-minimal under single-mutation deletion. Its header records the tier and seed. Each line includes the original generator step and decoded command. Run `/workspace/build/phase3_fuzz replay TRACE` in the same image and mounted directory to reproduce it.
 
-Phases 4–9 are unfinished, including HDT, durable storage, replication and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)
+Engine C is available as `Tenant<HdtEngine> graph(tenant_id, policy, HdtEngine(vertex_capacity))` with `engines/hdt.hpp`. It maintains one Euler tour forest per HDT level. Each admitted vertex has a permanent self-loop at each level. Level zero owns the fraud weights. Exact-level flags locate tree edges and incident non-tree edges for replacement searches. Deleting any structural edge uses the same HDT path for manual, expiry and suppression events. A graph self-edge remains visible in the tenant subgraph and cannot cross a cut.
+
+Run `phase4_fuzz tier1` and `phase4_fuzz tier2` in the development image to verify Engine C. Tier 1 runs the 100,000-mutation workload plus 8,192 adversarial mutations. Tier 2 compares full probed components and connectivity online after every input batch, with Engine A at sampled checkpoints. Both tiers use the same trace-reduction and replay interface as Phase 3.
+
+Phases 5–9 are unfinished, including durable storage, replication and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)
