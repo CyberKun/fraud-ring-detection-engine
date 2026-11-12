@@ -11,6 +11,8 @@ public:
     using Darts = std::pair<Index,Index>;
     enum Flag : unsigned char { tree = 1, nontree = 2 };
     explicit EulerTourForest(bool fraud_weights);
+    static constexpr std::size_t node_bytes() { return sizeof(Node); }
+    static constexpr std::size_t weight_bytes() { return sizeof(Weights); }
     void add_vertex();
     void set_weight(Index v, const Aggregate& weight);
     Index root(Index v) const;

@@ -19,6 +19,9 @@ public:
     std::size_t remaining_vertices() const { return capacity_ - ids_.size(); }
     std::size_t dummy_count() const { return capacity_ - 1 - free_.size(); }
     std::size_t node_slots() const { return nodes_.size(); }
+    static constexpr std::size_t node_bytes() { return sizeof(Node); }
+    static constexpr std::size_t edge_bytes() { return sizeof(Edge); }
+    std::size_t slab_bytes() const { return nodes_.capacity()*sizeof(Node); }
     std::size_t storage_bytes() const {
         auto bytes=sizeof(*this)+nodes_.capacity()*sizeof(Node)+adj_.capacity()*sizeof(Adj)
                   +(free_.capacity()+ancestors_.capacity())*sizeof(Index)+external_.capacity()*sizeof(Id)

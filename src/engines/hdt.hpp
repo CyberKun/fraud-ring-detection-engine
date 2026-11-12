@@ -24,6 +24,12 @@ public:
         unsigned highest_level{};
     };
     const Counters& counters() const { return counters_; }
+    static constexpr std::size_t edge_bytes() { return sizeof(Edge); }
+    std::size_t slab_bytes() const {
+        std::size_t bytes=0;
+        for(const auto& level:levels_) bytes+=level.forest.slab_bytes();
+        return bytes;
+    }
     std::size_t storage_bytes() const {
         auto bytes=sizeof(*this)+levels_.capacity()*sizeof(Level)+external_.capacity()*sizeof(Id)
                   +table_bytes(ids_)+table_bytes(edges_);

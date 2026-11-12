@@ -11,6 +11,8 @@ add_library(fraud_core src/engines/brute_force.cpp src/engines/offline.cpp src/e
 target_include_directories(fraud_core PUBLIC src)
 add_executable(phase1_bench bench/phase1.cpp)
 target_link_libraries(phase1_bench PRIVATE fraud_core)
+add_executable(phase9_bench bench/phase9.cpp)
+target_link_libraries(phase9_bench PRIVATE fraud_core)
 add_executable(phase2_check bench/phase2.cpp)
 target_link_libraries(phase2_check PRIVATE fraud_core)
 foreach(phase IN ITEMS 3 4)
