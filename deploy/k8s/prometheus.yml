@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: fraud-replicas
+    static_configs:
+      - targets:
+          - shard-0-0.shard-0:9100
+          - shard-0-1.shard-0:9100
+          - shard-0-2.shard-0:9100
+          - shard-1-0.shard-1:9100
+          - shard-1-1.shard-1:9100
+          - shard-1-2.shard-1:9100
+          - shard-2-0.shard-2:9100
+          - shard-2-1.shard-2:9100
+          - shard-2-2.shard-2:9100
+          - shard-3-0.shard-3:9100
+          - shard-3-1.shard-3:9100
+          - shard-3-2.shard-3:9100

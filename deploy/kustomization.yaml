@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - k8s/replicas.yaml
+  - k8s/infrastructure.yaml
+  - k8s/application.yaml
+configMapGenerator:
+  - name: placement
+    files: [placement.py]
+  - name: scrape
+    files: [prometheus.yml=k8s/prometheus.yml]
+  - name: dashboards
+    files: [engine.json=grafana/dashboard.json, latency.json=grafana/dashboards/latency.json]
+  - name: providers
+    files: [local.yml=grafana/provisioning/dashboards/local.yml]
+  - name: sources
+    files: [prometheus.yml=grafana/provisioning/datasources/prometheus.yml]

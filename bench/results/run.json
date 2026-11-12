@@ -1,0 +1,8 @@
+{
+  "commit": "b7701f574470861fba902e0f8326f4f2fb19df32",
+  "command": "python bench/reproduce.py",
+  "image": "sha256:c42d1b936a9a67f89049f31ce7349b11bbe3330d2860871cdec42eff38a850b5",
+  "seed": 9173,
+  "docker": "Docker Desktop 6.18.33.2-microsoft-standard-WSL2 x86_64 CPUs=12 RAM=3746189312",
+  "source_changes": ""
+}

@@ -1,6 +1,24 @@
 # Milestone status
 
-Phase 8 passed the gateway and operations console gate. Phase 9 is unfinished.
+All phases are complete.
+
+## Phase 9 verification
+
+The benchmark and full broker-enabled test suite ran from clean benchmark source at `b7701f574470861fba902e0f8326f4f2fb19df32`. The [run manifest](bench/results/run.json) records the exact image and host configuration.
+
+```text
+$ python bench/reproduce.py
+51/51 Test #51: Sharding.FourShardKafka .................................................   Passed   34.21 sec
+100% tests passed, 0 tests failed out of 51
+Total Test time (real) =  65.12 sec
+failover_seconds 3.5125150100000155
+scaling 8 ASYNC 256 1.0511701249999987 243.53812376469537 13.56269500001872 192.68786299994645
+scaling 8 QUORUM 256 2.3103570590001254 110.80538352404778 62.26141199999802 144.3440840000676
+```
+
+All 38 engine rows matched their raw nearest-rank latency samples and query checksums matched across engines on each trace. The 50,000-vertex sweep showed higher throughput and lower p99 for HDT throughout. LCT first led on p99.9 at the 0.5% sample, after HDT led at 0.1%. At eight shards, 256 timed writes per mode yielded 243.54 ASYNC and 110.81 QUORUM acknowledgements/s. The failover trace captured four failed attempts, leader unavailability, and restored service. [All measurements and plots](bench/results/README.md) · [CPU and memory profiles](PROFILING.md)
+
+Grafana loaded 14 dashboard panels and Prometheus accepted their 20 expressions. Kustomize rendered 29 resources: five ConfigMaps, five Deployments, two Jobs, eleven Services and six StatefulSets. Kubernetes verification covered manifest rendering. Runtime tests used Docker on one host.
 
 ## Phase 8 verification
 

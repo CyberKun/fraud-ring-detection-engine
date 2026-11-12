@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: Service
+metadata: {name: router}
+spec:
+  selector: {app: router}
+  ports: [{name: service, port: 5200, targetPort: 5200}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: router}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: router}}
+  template:
+    metadata: {labels: {app: router}}
+    spec:
+      containers:
+        - name: router
+          image: fraud-ring-phase9
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 5200}]
+          command: [./build/fraud_router, "http://etcd:2379", "0.0.0.0:5200"]
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: gateway}
+spec:
+  selector: {app: gateway}
+  ports: [{name: service, port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: gateway}}
+  template:
+    metadata: {labels: {app: gateway}}
+    spec:
+      containers:
+        - name: gateway
+          image: ringwatch-gateway
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8080}]
+          env: [{name: ROUTER_ADDRESS, value: "router:5200"}, {name: FRAUD_DEV_MODE, value: "0"}]
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: console}
+spec:
+  selector: {app: console}
+  ports: [{name: service, port: 80, targetPort: 80}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: console}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: console}}
+  template:
+    metadata: {labels: {app: console}}
+    spec:
+      containers:
+        - name: console
+          image: ringwatch-console
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 80}]
+          readinessProbe: {httpGet: {path: /, port: 80}}
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus}
+spec:
+  selector: {app: prometheus}
+  ports: [{name: service, port: 9090, targetPort: 9090}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: prometheus}}
+  template:
+    metadata: {labels: {app: prometheus}}
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.55.1
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 9090}]
+          volumeMounts: [{name: config, mountPath: /etc/prometheus}]
+      volumes: [{name: config, configMap: {name: scrape}}]
+
+---
+apiVersion: v1
+kind: Service
+metadata: {name: grafana}
+spec:
+  selector: {app: grafana}
+  ports: [{name: service, port: 3000, targetPort: 3000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: grafana}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata: {labels: {app: grafana}}
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.5.2
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 3000}]
+          env:
+            - {name: GF_SECURITY_ALLOW_EMBEDDING, value: "true"}
+            - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+            - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer}
+            - {name: GF_SERVER_ROOT_URL, value: "%(protocol)s://%(domain)s/grafana/"}
+            - {name: GF_SERVER_SERVE_FROM_SUB_PATH, value: "true"}
+          volumeMounts:
+            - {name: dashboards, mountPath: /dashboards}
+            - {name: providers, mountPath: /etc/grafana/provisioning/dashboards}
+            - {name: sources, mountPath: /etc/grafana/provisioning/datasources}
+      volumes:
+        - {name: dashboards, configMap: {name: dashboards}}
+        - {name: providers, configMap: {name: providers}}
+        - {name: sources, configMap: {name: sources}}

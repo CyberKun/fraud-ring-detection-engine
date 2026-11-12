@@ -1,0 +1,108 @@
+Internal ctest changing into directory: /workspace/build
+Test project /workspace/build
+      Start  1: Core.EncodesBoundariesAndRejectsReservedPrefix
+ 1/51 Test  #1: Core.EncodesBoundariesAndRejectsReservedPrefix ..........................   Passed    0.01 sec
+      Start  2: Core.ExtensionLazyInvalidationAndHandleRetirement
+ 2/51 Test  #2: Core.ExtensionLazyInvalidationAndHandleRetirement .......................   Passed    0.01 sec
+      Start  3: Core.InvalidRequestsDoNotConsumeTimeOrMutate
+ 3/51 Test  #3: Core.InvalidRequestsDoNotConsumeTimeOrMutate ............................   Passed    0.01 sec
+      Start  4: Core.FollowerUsesExplicitEventsAndTenantScopedProducerSequences
+ 4/51 Test  #4: Core.FollowerUsesExplicitEventsAndTenantScopedProducerSequences .........   Passed    0.01 sec
+      Start  5: Core.ReplayedDuplicateConsumesPositionAndPromotionRebuildsWheel
+ 5/51 Test  #5: Core.ReplayedDuplicateConsumesPositionAndPromotionRebuildsWheel .........   Passed    0.01 sec
+      Start  6: Oracle.OverwritesWeightsAndReturnsInducedMultigraph
+ 6/51 Test  #6: Oracle.OverwritesWeightsAndReturnsInducedMultigraph .....................   Passed    0.01 sec
+      Start  7: Wheel.OrdersAcrossSameSlotBoundariesAndIdleGaps
+ 7/51 Test  #7: Wheel.OrdersAcrossSameSlotBoundariesAndIdleGaps .........................   Passed    0.01 sec
+      Start  8: Hub.HysteresisCountsShadowAndRestoresOnlyUnfilteredEdges
+ 8/51 Test  #8: Hub.HysteresisCountsShadowAndRestoresOnlyUnfilteredEdges ................   Passed    0.01 sec
+      Start  9: Hub.ShadowExtensionAndExpiryTriggerRestore
+ 9/51 Test  #9: Hub.ShadowExtensionAndExpiryTriggerRestore ..............................   Passed    0.01 sec
+      Start 10: Alerts.UsesAccountDenominatorAndPerVertexCooldown
+10/51 Test #10: Alerts.UsesAccountDenominatorAndPerVertexCooldown .......................   Passed    0.01 sec
+      Start 11: Alerts.SplittingOffUnflaggedSideCanCrossThreshold
+11/51 Test #11: Alerts.SplittingOffUnflaggedSideCanCrossThreshold .......................   Passed    0.01 sec
+      Start 12: Rollback.NestedMergesRestoreWeightsMembersAndDistributeFirstMarks
+12/51 Test #12: Rollback.NestedMergesRestoreWeightsMembersAndDistributeFirstMarks .......   Passed    0.01 sec
+      Start 13: Offline.HalfOpenReinsertionsSameHandleExtensionAndOpenEndedWeights
+13/51 Test #13: Offline.HalfOpenReinsertionsSameHandleExtensionAndOpenEndedWeights ......   Passed    0.01 sec
+      Start 14: Offline.HubFilteredIntervalsSpanSuppressRestoreAndShadowExpiry
+14/51 Test #14: Offline.HubFilteredIntervalsSpanSuppressRestoreAndShadowExpiry ..........   Passed    0.01 sec
+      Start 15: Offline.FirstCrossingPersistsThroughSplitsAndOnlyAppliesToThenMembers
+15/51 Test #15: Offline.FirstCrossingPersistsThroughSplitsAndOnlyAppliesToThenMembers ...   Passed    0.01 sec
+      Start 16: Offline.EqualTimestampUsesFinalStateAndTruncatesInducedParallelEdges
+16/51 Test #16: Offline.EqualTimestampUsesFinalStateAndTruncatesInducedParallelEdges ....   Passed    0.01 sec
+      Start 17: Offline.EmptyWindowRejectedHistoryAndDuplicateRecords
+17/51 Test #17: Offline.EmptyWindowRejectedHistoryAndDuplicateRecords ...................   Passed    0.01 sec
+      Start 18: Offline.ConsecutiveWindowsCarryShadowHandlesWeightsAndCrossings
+18/51 Test #18: Offline.ConsecutiveWindowsCarryShadowHandlesWeightsAndCrossings .........   Passed    0.01 sec
+      Start 19: DeltaDebug.ReducesAStateDependentMismatchToSingleDeletionMinimality
+19/51 Test #19: DeltaDebug.ReducesAStateDependentMismatchToSingleDeletionMinimality .....   Passed    0.01 sec
+      Start 20: Lct.ReversalVirtualChildrenWeightsAndCut
+20/51 Test #20: Lct.ReversalVirtualChildrenWeightsAndCut ................................   Passed    0.01 sec
+      Start 21: Lct.MaxKeyRepairScansOnlySmallerSideForManualAndSuppression
+21/51 Test #21: Lct.MaxKeyRepairScansOnlySmallerSideForManualAndSuppression .............   Passed    0.01 sec
+      Start 22: Lct.CycleTiesAndExtensionsRefreshPreferredMinimum
+22/51 Test #22: Lct.CycleTiesAndExtensionsRefreshPreferredMinimum .......................   Passed    0.01 sec
+      Start 23: Lct.FixedSlabRecyclesThroughDenseChurnAndOrderedExpiry
+23/51 Test #23: Lct.FixedSlabRecyclesThroughDenseChurnAndOrderedExpiry ..................   Passed    0.02 sec
+      Start 24: Lct.CapacityRejectionIsAtomicOnSubmissionAndReplay
+24/51 Test #24: Lct.CapacityRejectionIsAtomicOnSubmissionAndReplay ......................   Passed    0.01 sec
+      Start 25: EulerTour.RerootCutBothOrdersAndRecycleOnlyDarts
+25/51 Test #25: EulerTour.RerootCutBothOrdersAndRecycleOnlyDarts ........................   Passed    0.01 sec
+      Start 26: EulerTour.ExactDartFlagsAndLoopIncidencePropagateIndependently
+26/51 Test #26: EulerTour.ExactDartFlagsAndLoopIncidencePropagateIndependently ..........   Passed    0.01 sec
+      Start 27: Hdt.PromotesExactTreeThenInternalNontreeAndFindsLevelOneReplacement
+27/51 Test #27: Hdt.PromotesExactTreeThenInternalNontreeAndFindsLevelOneReplacement .....   Passed    0.01 sec
+      Start 28: Hdt.ReplacesAtLowerLevelWithoutJoiningHigherForests
+28/51 Test #28: Hdt.ReplacesAtLowerLevelWithoutJoiningHigherForests .....................   Passed    0.01 sec
+      Start 29: Hdt.NonPowerOfTwoBoundsParallelKeysAndSelfEdges
+29/51 Test #29: Hdt.NonPowerOfTwoBoundsParallelKeysAndSelfEdges .........................   Passed    0.01 sec
+      Start 30: Hdt.DeepCutsReachPairsAndStopAtFirstOfTwoCrossingCandidates
+30/51 Test #30: Hdt.DeepCutsReachPairsAndStopAtFirstOfTwoCrossingCandidates .............   Passed    0.01 sec
+      Start 31: Hdt.HubSuppressionRestoreAndVertexOverwritesUseLevelZeroWeights
+31/51 Test #31: Hdt.HubSuppressionRestoreAndVertexOverwritesUseLevelZeroWeights .........   Passed    0.01 sec
+      Start 32: toolchain_smoke
+32/51 Test #32: toolchain_smoke .........................................................   Passed    0.06 sec
+      Start 33: Wal.GoldenFre1WithProducerSequence
+33/51 Test #33: Wal.GoldenFre1WithProducerSequence ......................................   Passed    0.02 sec
+      Start 34: Wal.EveryTruncatedByteAndBadFinalCrcRecoverPreviousFrame
+34/51 Test #34: Wal.EveryTruncatedByteAndBadFinalCrcRecoverPreviousFrame ................   Passed    0.93 sec
+      Start 35: Wal.InteriorCrcLengthMagicAndCapsFailClosed
+35/51 Test #35: Wal.InteriorCrcLengthMagicAndCapsFailClosed .............................   Passed    0.05 sec
+      Start 36: Wal.RejectsMixedEpochAndNoncontiguousFrame
+36/51 Test #36: Wal.RejectsMixedEpochAndNoncontiguousFrame ..............................   Passed    0.01 sec
+      Start 37: Wal.UnsupportedVersionAndOversizedHeadersArePreserved
+37/51 Test #37: Wal.UnsupportedVersionAndOversizedHeadersArePreserved ...................   Passed    0.03 sec
+      Start 38: Wal.PhysicallyTruncatedInteriorFollowedByValidFrameIsNeverRepaired
+38/51 Test #38: Wal.PhysicallyTruncatedInteriorFollowedByValidFrameIsNeverRepaired ......   Passed    0.04 sec
+      Start 39: Storage.FailedWriteCannotPublishSpeculativeState
+39/51 Test #39: Storage.FailedWriteCannotPublishSpeculativeState ........................   Passed    0.02 sec
+      Start 40: Storage.AuditCanIncludeLargestTimestamp
+40/51 Test #40: Storage.AuditCanIncludeLargestTimestamp .................................   Passed    0.02 sec
+      Start 41: Storage.ConcurrentAdmissionsShareDurabilityAndDeduplicate
+41/51 Test #41: Storage.ConcurrentAdmissionsShareDurabilityAndDeduplicate ...............   Passed    0.04 sec
+      Start 42: Storage.SnapshotRotationCrashWindowsAndHistoricalQueries
+42/51 Test #42: Storage.SnapshotRotationCrashWindowsAndHistoricalQueries ................   Passed    0.08 sec
+      Start 43: Storage.CorruptSnapshotOrSealedArchiveFailsClosed
+43/51 Test #43: Storage.CorruptSnapshotOrSealedArchiveFailsClosed .......................   Passed    0.06 sec
+      Start 44: ReplicaJournal.PromiseSurvivesRestartWithoutRewritingLastEntry
+44/51 Test #44: ReplicaJournal.PromiseSurvivesRestartWithoutRewritingLastEntry ..........   Passed    0.07 sec
+      Start 45: ReplicaJournal.TruncationBelowCommitIsFatalAcrossRestarts
+45/51 Test #45: ReplicaJournal.TruncationBelowCommitIsFatalAcrossRestarts ...............   Passed    0.05 sec
+      Start 46: ReplicaJournal.WireFrameRejectsChecksumAndLengthMismatch
+46/51 Test #46: ReplicaJournal.WireFrameRejectsChecksumAndLengthMismatch ................   Passed    0.01 sec
+      Start 47: Routing.PendingCountAndByteReservations
+47/51 Test #47: Routing.PendingCountAndByteReservations .................................   Passed    0.01 sec
+      Start 48: Routing.FixedHashByteOrderAndPin
+48/51 Test #48: Routing.FixedHashByteOrderAndPin ........................................   Passed    0.01 sec
+      Start 49: SingleNode.GrpcAndMetrics
+49/51 Test #49: SingleNode.GrpcAndMetrics ...............................................   Passed    2.55 sec
+      Start 50: Replication.ElectionAndDivergentTail
+50/51 Test #50: Replication.ElectionAndDivergentTail ....................................   Passed   26.50 sec
+      Start 51: Sharding.FourShardKafka
+51/51 Test #51: Sharding.FourShardKafka .................................................   Passed   34.21 sec
+
+100% tests passed, 0 tests failed out of 51
+
+Total Test time (real) =  65.12 sec

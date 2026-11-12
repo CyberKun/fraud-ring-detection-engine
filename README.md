@@ -1,6 +1,82 @@
 # Streaming fraud-ring detection engine
 
-Phase 1 provides an in-memory, single-writer tenant graph and a breadth-first reference engine. It accepts typed vertex updates, edge upserts, deletes and ticks. Each accepted command returns its ordered event records and alerts. Queries provide connectivity, component aggregates and bounded induced subgraphs. Hub suppression is a signal-quality policy. Queries report hub-filtered connectivity, while active degree counts all live incident keys.
+Shared cards, devices and transactions connect accounts in a per-tenant graph. The live service maintains component size, volume and flagged-account counts as links change or expire. An investigator can follow an alert to the current graph or reconstruct the component at its first historical alert crossing.
+
+```mermaid
+flowchart LR
+  Console[React Canvas console] -->|REST / WebSocket| Gateway
+  Gateway -->|gRPC| Router
+  Client[gRPC clients] --> Router
+  Etcd[etcd shard map and leases] --> Router
+  Etcd --> Leader
+  Producer --> Kafka
+  Kafka -->|assigned partitions| Leader
+  Router -->|writes / reads| Leader[Shard leader]
+  Router -->|reads with min_lsn| Followers
+  Leader -->|FRE1 WAL frames| Followers[Two followers]
+  Leader --> Live[Live graph and alert policy]
+  Followers --> Live
+  Live --> History[Retained WAL and historical audit]
+  Prometheus -->|scrape replicas| Live
+  Grafana --> Prometheus
+  Console --> Grafana
+```
+
+**Run the console** with `docker compose up -d --build`, open [Ringwatch](http://localhost:8180), then choose **Seed demo ring** in Live Alerts.
+
+**Reproduce the benchmarks** with Python 3, Matplotlib (`python -m pip install matplotlib`), Git and Docker Compose v2. Run this command in a checkout of the revision in [run.json](bench/results/run.json) to measure the same code. The command builds the Release executable, starts the Compose broker, runs CTest with Kafka enabled, samples both engine profiles, launches disposable replicated clusters, and writes CSVs and plots into `bench/results/`.
+
+```sh
+python bench/reproduce.py
+```
+
+### Measured results
+
+Release build on one 12-vCPU Docker Desktop Linux VM with 3.49 GiB RAM allocated. The tables use the run from commit `b7701f5`. The bounded matrix reports operations per second, including component queries.
+
+| Workload · 1,000 vertices | BFS | Batch DSU | LCT-MSF | HDT |
+| --- | ---: | ---: | ---: | ---: |
+| Random sparse | 79,236 | 1,174,230 | 499,886 | 639,600 |
+| Preferential attachment | 78,819 | 1,739,730 | 443,118 | 648,942 |
+| Bridge cuts | 123,965 | 2,151,940 | 322,797 | 2,895,100 |
+| 90% TTL extensions | 123,362 | 6,134,550 | 631,420 | 2,623,320 |
+| 40 ms TTL | 86,172 | 1,282,560 | 516,570 | 908,460 |
+| 10 arrivals / logical ms | 117,738 | 2,545,570 | 518,649 | 1,231,150 |
+
+**Deletion sweep, 50,000 vertices.** HDT delivered higher throughput and lower p50 and p99 latency at all seven measured fractions. At p99.9, HDT had the lower latency at 0% and 0.1%. LCT first had the lower latency at 0.5% and retained it through 10%. This places the observed change between 0.1% and 0.5%; there are no samples inside that interval.
+
+| Manual deletes | LCT ops/s | HDT ops/s | LCT p99 µs | HDT p99 µs | LCT p99.9 µs | HDT p99.9 µs |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0% | 226,345 | 1,693,490 | 13.568 | 3.697 | 61.784 | 6.603 |
+| 0.1% | 217,909 | 1,285,610 | 14.018 | 3.637 | 70.441 | 25.692 |
+| 0.5% | 255,548 | 962,457 | 13.727 | 4.309 | 52.806 | 132.395 |
+| 1% | 283,796 | 474,286 | 20.491 | 9.569 | 43.718 | 246.373 |
+| 2% | 233,377 | 745,233 | 24.51 | 5.732 | 61.493 | 142.946 |
+| 5% | 227,452 | 539,657 | 25.521 | 7.435 | 59.148 | 229.149 |
+| 10% | 193,019 | 453,780 | 28.437 | 10.741 | 69.79 | 178.748 |
+
+![Throughput, p99 and p99.9 latency against manual tree-edge deletion fraction](bench/results/crossover.svg)
+
+At 10%, LCT scanned 500,000 split-side vertices across 4,000 repairs. HDT traversed 4,800 levels and promoted 30,950 edges. None of these bridge cuts had a crossing replacement. Memory use and CPU stacks for the same topology are in [PROFILING.md](PROFILING.md).
+
+**Distributed writes.** Each row measures eight clients issuing updates through the Router to three-member shards.
+
+| Shards | ASYNC writes/s | ASYNC p50 / p99 ms | QUORUM writes/s | QUORUM p50 / p99 ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 58.25 | 58.99 / 366.27 | 29.15 | 264.88 / 472.68 |
+| 2 | 95.14 | 33.58 / 313.27 | 46.23 | 175.59 / 287.02 |
+| 4 | 170.48 | 19.80 / 214.18 | 72.56 | 112.60 / 202.04 |
+| 8 | 243.54 | 13.56 / 192.69 | 110.81 | 62.26 / 144.34 |
+
+![Acknowledged throughput and client p99 latency by shard count and mode](bench/results/scaling.svg)
+
+The first QUORUM request started after the leader kill and successfully acknowledged by its successor completed **3.513 s after the kill**. Four attempts failed during failover. Seven consecutive half-second bins contained zero acknowledgements. The largest sampled follower lag before the kill was nine records. [Time series and individual requests](bench/results/README.md)
+
+![Throughput, attempt p99 latency and maximum observed replica lag around the leader kill](bench/results/failover.svg)
+
+### Tenant graph and engines
+
+The single writer accepts typed vertex updates, edge upserts, deletes and ticks. Each accepted command returns its ordered event records and alerts. Queries provide connectivity, component aggregates and bounded induced subgraphs. Hub suppression is a signal-quality policy. Queries report hub-filtered connectivity, while active degree counts all live incident keys.
 
 ```sh
 docker build -f Dockerfile.dev -t fraud-ring-dev .
@@ -11,6 +87,8 @@ docker run --rm fraud-ring-dev ./build/phase1_bench
 For a library consumer, instantiate `fraud::Tenant<fraud::BruteForce>` from `core/tenant.hpp` and `engines/brute_force.hpp`. Pass the epoch, first available shard LSN, monotonic event time and command to `submit`. Advance the next LSN by the number of returned records. Use `engine().stats(id)`, `engine().connected(u,v)` and `subgraph(id,max_k)` for queries. The reference engine runs BFS on each query.
 
 Engine A builds an immutable offline index with `OfflineEngine::build(tenant, policy, records, end_ms)` from `engines/offline.hpp`. Supply complete ordered tenant records beginning at empty state, including explicit expiry and hub transitions. The end time is exclusive. Records sharing a timestamp produce one observable historical state after the final record at that timestamp.
+
+Each structural edge lifespan and vertex weight interval occupies a set of segment-tree nodes covering its time range. Traversal applies their unions and weight changes on entry and rolls the DSU back on exit. A query at a leaf sees precisely the intervals covering that timestamp.
 
 Use `audit_at(time, vertex, max_nodes)` for component stats, an induced subgraph and the earliest qualifying timestamp for that vertex. Qualification follows the alert thresholds independently of emission cooldown. `connected_at(time, u, v)` checks historical connectivity. Use `audit_many(queries)` for checkpoints across a trace so they share a segment-tree traversal. Each call initializes vertex-sized rollback workspace and applies the interval actions on visited paths.
 
@@ -55,9 +133,13 @@ docker run --rm fraud-ring-phase5 ./build/phase5_smoke
 docker run --rm fraud-ring-phase5 ./build/phase5_smoke lct
 ```
 
-Phases 6–9 are unfinished, including replication, routing, Kafka ingestion, and the console. [Progress and measurements](PROGRESS.md) · [Design](PLAN.md)
-
 ### Replicated shard
+
+An etcd lease and a create-revision compare-and-swap elect the candidate. The transaction revision becomes its epoch. Each member fsyncs a promise before replying and fences older callers. The durable promise and the epoch of the last WAL entry advance independently.
+
+1. Collect promises and log positions from a majority, including the candidate.
+2. Select the greatest `(last_entry_epoch, last_lsn)` from that quorum. Find the shared prefix, fetch and verify missing frames, fsync locally and recheck lease ownership.
+3. Align followers at a common frame boundary, discard divergent uncommitted suffixes and fsync the authoritative tail on a majority. Truncating committed history is fatal. Rebuild the writer and verify the lease before admitting writes or ticks.
 
 Run one `fraud_replica` process per member with a separate durable directory. Supply the same shard ID, etcd endpoint and three ordered gRPC addresses on each process. The member index is 0, 1 or 2. For example, the first member on a local machine can start with the following command.
 
@@ -142,3 +224,32 @@ python bench/phase8_e2e.py --failover --canvas-limit
 ```
 
 The browser gate uses the running Compose stack. The optional failover check restores the stopped member. The canvas-limit check writes a 2,001-account chain to a fresh tenant through Kafka and measures 60 browser frame intervals on the bounded graph.
+
+### Kubernetes and observability
+
+The Kustomize entry point is `deploy/`. Each shard has a three-member StatefulSet with stable DNS identities, a headless Service and a separate persistent volume claim per replica. The etcd and Redpanda StatefulSets also require a default storage class. Placement and topic initialization run as Jobs. The console Service stays internal until forwarded. For a local kind cluster:
+
+```sh
+kind create cluster --name ringwatch
+docker build -t fraud-ring-phase9 -f Dockerfile.dev .
+docker build -t ringwatch-gateway -f gateway/Dockerfile .
+docker build -t ringwatch-console -f console/Dockerfile .
+kind load docker-image --name ringwatch fraud-ring-phase9 ringwatch-gateway ringwatch-console
+kubectl apply -k deploy/
+kubectl rollout status statefulset/shard-0
+kubectl port-forward service/console 8180:80
+```
+
+The Kubernetes configuration disables the demo mutation controls. Use the gRPC Router or Kafka producer to submit events. Prometheus scrapes each replica. Grafana provisions both the console latency panel and [the full engine and replication dashboard](deploy/grafana/dashboard.json). Empty histogram panels require observations in their selected interval. In this release the manifests were rendered with `kubectl kustomize deploy`; runtime deployment and failover were exercised on Docker Compose.
+
+### Measurement boundaries
+
+The engine matrix uses 1,000 vertices so BFS and full DSU rebuilding can consume the same trace as the dynamic engines. The DSU unions inserts incrementally and batches removals until the next component query, when it rebuilds from all live edges. Every expiry window ends with a query. The sparse and hub workloads add five short-lived chords per logical millisecond for 200 ms, expire them after 10 ms, and drain the tail. The hub workload uses degree-weighted endpoints. Two sensitivity runs independently vary TTL to 40 ms and arrival rate to ten new chords per logical millisecond. These are simulated event times. The repeat workload extends TTLs on exactly 90% of mutations. The adversarial workload repeatedly cuts and reinserts the central bridge of a 1,000-vertex component. Handles identify structural edges directly. This isolates the graph index from tenant policy, network and persistence costs.
+
+The crossover sweep uses 50,000 vertices in 200 independent 250-vertex components. Each manual deletion targets a randomly selected component's central tree bridge. Each deletion is followed by reinsertion. There are 40,000 mutations and 2,500 component queries per engine per point. The fraction counts manual deletions among mutations. Timing includes clock calls and dispatch, excludes graph construction, and pools mutation and query latencies. Percentiles use nearest rank. Each row represents one seeded run. Topology, query mix and machine load can change the ordering.
+
+Distributed runs use eight concurrent clients pinned across the available shards, three replica processes per shard, one gRPC Router and a private etcd. Each mode times 256 acknowledged vertex updates after warm-up. Each client waits for its preceding acknowledgement. ASYNC runs first. The failover trace uses a single QUORUM writer with a one-second deadline per attempt, kills the leader process and restarts it after a successful post-kill request. Half-second bins include failed attempts in latency and only successes in throughput. Lag is the largest observed leader-to-reachable-follower applied-LSN difference; gaps indicate an unavailable observation. [Raw samples, summaries and environment](bench/results/)
+
+### Operational limits
+
+The service assumes trusted peers, fixed three-member groups and ordered sequences per producer. Tenant migration requires coordinated history transfer. Historical audit and reconciliation retain WAL history, so storage and recovery work grow over time. ASYNC can lose a locally acknowledged suffix on failover. The supplied Compose and kind configurations use a single etcd and broker and provide no infrastructure-level high availability or transport authentication. The archived distributed benchmarks use loopback networking and a shared Docker host and disk. They measure this configuration; multi-host latency, sustained saturation and physical-disk power-loss behavior require separate measurements.

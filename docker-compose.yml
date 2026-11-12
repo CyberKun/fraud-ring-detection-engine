@@ -62,7 +62,10 @@ services:
       GF_SECURITY_ALLOW_EMBEDDING: "true"
       GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-    volumes: [./deploy/grafana/provisioning:/etc/grafana/provisioning:ro, ./deploy/grafana/dashboards:/dashboards:ro]
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards/latency.json:/dashboards/latency.json:ro
+      - ./deploy/grafana/dashboard.json:/dashboards/engine.json:ro
   s0r0:
     <<: *replica
     command: [./build/fraud_replica, /data, "0", "0", "http://etcd:2379", "3", "1000", "s0r0:5100", "s0r1:5100", "s0r2:5100", "9100"]

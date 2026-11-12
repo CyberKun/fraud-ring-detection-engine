@@ -1,0 +1,125 @@
+Functions Call Tree. Metric: Attributed Total CPU Time
+
+Attr. Total    Name
+CPU
+ sec.      %
+0.425 100.00   +-<Total>
+0.425 100.00     +-<static>@0x271c1 (<libc.so.6>)
+0.425 100.00       +-main
+0.425 100.00         +-main::{lambda(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned int, unsigned int, unsigned int, bool)#1}::operator()(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned int, unsigned int, unsigned int, bool) const [clone .constprop.0]
+0.413  97.18           +-unsigned long measure<fraud::LctEngine>(Trace const&, fraud::LctEngine&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned int)
+0.273  64.32           |  +-fraud::LctEngine::extend_ttl(unsigned long, unsigned long)
+0.135  31.69           |  |  +-fraud::LctEngine::access(unsigned int) const
+0.124  29.11           |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.029   6.81           |  |  |  |  +-fraud::LctEngine::rotate(unsigned int) const
+0.023   5.40           |  |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.017   3.99           |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.006   1.41           |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.100  23.47           |  |  +-fraud::LctEngine::reconsider(fraud::LctEngine::Edge&)
+0.046  10.80           |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.042   9.86           |  |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.008   1.88           |  |  |  |  |  +-fraud::LctEngine::rotate(unsigned int) const
+0.005   1.17           |  |  |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.003   0.70           |  |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.018   4.23           |  |  |  +-fraud::LctEngine::detach(fraud::LctEngine::Edge&)
+0.010   2.35           |  |  |  |  +-std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_erase(std::integral_constant<bool, true>, unsigned long const&) [clone .isra.0]
+0.008   1.88           |  |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.008   1.88           |  |  |  |    +-fraud::LctEngine::splay(unsigned int) const
+0.002   0.47           |  |  |  |      +-fraud::LctEngine::rotate(unsigned int) const
+0.001   0.23           |  |  |  |      |  +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |  |      +-fraud::LctEngine::pull(unsigned int) const
+0.010   2.35           |  |  |  +-fraud::LctEngine::attach(fraud::LctEngine::Edge&)
+0.005   1.17           |  |  |  |  +-fraud::LctEngine::link(unsigned int, unsigned int)
+0.004   0.94           |  |  |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.002   0.47           |  |  |  |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.002   0.47           |  |  |  |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |  |  |  |    +-fraud::LctEngine::rotate(unsigned int) const
+0.001   0.23           |  |  |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |  |  |    +-fraud::LctEngine::rotate(unsigned int) const
+0.001   0.23           |  |  |  |  |      +-fraud::LctEngine::pull(unsigned int) const
+0.004   0.94           |  |  |  |  +-std::pair<std::__detail::_Node_iterator<unsigned long, true, false>, bool> std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_insert_unique<unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > >(unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > const&) [clone .isra.0]
+0.010   2.35           |  |  |  +-std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_erase(std::integral_constant<bool, true>, unsigned long const&) [clone .isra.0]
+0.006   1.41           |  |  |  +-std::_Hashtable<unsigned long, std::pair<unsigned long const, fraud::LctEngine::Edge>, std::allocator<std::pair<unsigned long const, fraud::LctEngine::Edge> >, std::__detail::_Select1st, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, false, true> >::find(unsigned long const&)
+0.006   1.41           |  |  |  +-std::pair<std::__detail::_Node_iterator<unsigned long, true, false>, bool> std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_insert_unique<unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > >(unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > const&) [clone .isra.0]
+0.004   0.94           |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |    +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |    +-fraud::LctEngine::rotate(unsigned int) const
+0.001   0.23           |  |  |      +-fraud::LctEngine::pull(unsigned int) const
+0.009   2.11           |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.005   1.17           |  |    +-fraud::LctEngine::rotate(unsigned int) const
+0.003   0.70           |  |    |  +-fraud::LctEngine::pull(unsigned int) const
+0.002   0.47           |  |    +-fraud::LctEngine::pull(unsigned int) const
+0.104  24.41           |  +-fraud::LctEngine::delete_edge(unsigned long, fraud::Removal)
+0.081  19.01           |  |  +-fraud::LctEngine::repair(unsigned int, unsigned int)
+0.060  14.08           |  |  |  +-fraud::LctEngine::members(unsigned int, unsigned long) const
+0.002   0.47           |  |  |    +-free
+0.001   0.23           |  |  |    |  +-<static>@0x96033 (<libc.so.6>)
+0.001   0.23           |  |  |    +-<static>@0x151f2d (<libc.so.6>)
+0.016   3.76           |  |  +-fraud::LctEngine::detach(fraud::LctEngine::Edge&)
+0.010   2.35           |  |  |  +-std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_erase(std::integral_constant<bool, true>, unsigned long const&) [clone .isra.0]
+0.001   0.23           |  |  |  |  +-free
+0.001   0.23           |  |  |  |    +-<static>@0x96033 (<libc.so.6>)
+0.005   1.17           |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.005   1.17           |  |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.002   0.47           |  |  |  |    +-fraud::LctEngine::rotate(unsigned int) const
+0.002   0.47           |  |  |  |      +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |  +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |    +-fraud::LctEngine::pull(unsigned int) const
+0.007   1.64           |  |  +-std::_Hashtable<unsigned long, std::pair<unsigned long const, fraud::LctEngine::Edge>, std::allocator<std::pair<unsigned long const, fraud::LctEngine::Edge> >, std::__detail::_Select1st, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, false, true> >::find(unsigned long const&)
+0.016   3.76           |  +-fraud::LctEngine::insert_edge(unsigned long, unsigned long, unsigned long, unsigned long)
+0.004   0.94           |  |  +-fraud::LctEngine::attach(fraud::LctEngine::Edge&)
+0.002   0.47           |  |  |  +-std::pair<std::__detail::_Node_iterator<unsigned long, true, false>, bool> std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_insert_unique<unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > >(unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > const&) [clone .isra.0]
+0.001   0.23           |  |  |  |  +-operator new(unsigned long)
+0.001   0.23           |  |  |  |  |  +-malloc
+0.001   0.23           |  |  |  |  |    +-<static>@0x96033 (<libc.so.6>)
+0.001   0.23           |  |  |  |  +-std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_rehash(unsigned long, unsigned long const&)
+0.001   0.23           |  |  |  |    +-operator new(unsigned long)
+0.001   0.23           |  |  |  |      +-malloc
+0.001   0.23           |  |  |  |        +-<static>@0x96033 (<libc.so.6>)
+0.001   0.23           |  |  |  +-fraud::LctEngine::link(unsigned int, unsigned int)
+0.001   0.23           |  |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.001   0.23           |  |  |  |    +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |  +-fraud::LctEngine::pull(unsigned int) const
+0.004   0.94           |  |  +-fraud::LctEngine::connected(unsigned long, unsigned long) const
+0.004   0.94           |  |  |  +-fraud::LctEngine::root(unsigned int) const
+0.003   0.70           |  |  |    +-fraud::LctEngine::access(unsigned int) const
+0.003   0.70           |  |  |    |  +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |    |    +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |    |    +-fraud::LctEngine::rotate(unsigned int) const
+0.001   0.23           |  |  |    |      +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  |    +-fraud::LctEngine::splay(unsigned int) const
+0.001   0.23           |  |  |      +-fraud::LctEngine::rotate(unsigned int) const
+0.003   0.70           |  |  +-std::_Hashtable<unsigned long, std::pair<unsigned long const, unsigned int>, std::allocator<std::pair<unsigned long const, unsigned int> >, std::__detail::_Select1st, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, false, true> >::find(unsigned long const&) const
+0.002   0.47           |  |  +-fraud::LctEngine::reconsider(fraud::LctEngine::Edge&)
+0.001   0.23           |  |  |  +-fraud::LctEngine::access(unsigned int) const
+0.001   0.23           |  |  |  +-fraud::LctEngine::attach(fraud::LctEngine::Edge&)
+0.001   0.23           |  |  |    +-fraud::LctEngine::link(unsigned int, unsigned int)
+0.001   0.23           |  |  |      +-fraud::LctEngine::access(unsigned int) const
+0.001   0.23           |  |  |        +-fraud::LctEngine::pull(unsigned int) const
+0.001   0.23           |  |  +-fraud::LctEngine::ensure(unsigned long)
+0.001   0.23           |  |  +-std::pair<std::__detail::_Node_iterator<unsigned long, true, false>, bool> std::_Hashtable<unsigned long, unsigned long, std::allocator<unsigned long>, std::__detail::_Identity, std::equal_to<unsigned long>, std::hash<unsigned long>, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits<false, true, true> >::_M_insert_unique<unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > >(unsigned long const&, unsigned long const&, std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<unsigned long, false> > > const&) [clone .isra.0]
+0.001   0.23           |  |    +-operator new(unsigned long)
+0.001   0.23           |  |      +-malloc
+0.009   2.11           |  +-std::chrono::_V2::steady_clock::now()
+0.005   1.17           |  |  +-clock_gettime
+0.005   1.17           |  |    +-__vdso_clock_gettime
+0.001   0.23           |  |      +-<static>@0x7ad8e29b3770 ([vdso])
+0.003   0.70           |  +-fraud::LctEngine::stats(unsigned long) const
+0.001   0.23           |  |  +-fraud::LctEngine::access(unsigned int) const
+0.001   0.23           |  |    +-fraud::LctEngine::splay(unsigned int) const
+0.002   0.47           |  +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.002   0.47           |    +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.002   0.47           |      +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.001   0.23           |        +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.001   0.23           |          +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.001   0.23           |            +-void std::__introsort_loop<__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter>(__gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, __gnu_cxx::__normal_iterator<double*, std::vector<double, std::allocator<double> > >, long, __gnu_cxx::__ops::_Iter_less_iter) [clone .isra.0]
+0.005   1.17           +-Trace::Trace(unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned int, unsigned int)
+0.002   0.47           |  +-void std::shuffle<__gnu_cxx::__normal_iterator<char*, std::vector<char, std::allocator<char> > >, std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul>&>(__gnu_cxx::__normal_iterator<char*, std::vector<char, std::allocator<char> > >, __gnu_cxx::__normal_iterator<char*, std::vector<char, std::allocator<char> > >, std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul>&)
+0.002   0.47           |  |  +-unsigned long std::uniform_int_distribution<unsigned long>::operator()<std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul> >(std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul>&, std::uniform_int_distribution<unsigned long>::param_type const&) [clone .isra.0]
+0.002   0.47           |  |    +-std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul>::_M_gen_rand()
+0.001   0.23           |  +-std::mersenne_twister_engine<unsigned long, 32ul, 624ul, 397ul, 31ul, 2567483615ul, 11ul, 4294967295ul, 7ul, 2636928640ul, 15ul, 4022730752ul, 18ul, 1812433253ul>::_M_gen_rand()
+0.003   0.70           +-fraud::LctEngine::LctEngine(unsigned int)
+0.003   0.70           +-free
+0.002   0.47             +-<static>@0x96033 (<libc.so.6>)
+0.001   0.23               +-<static>@0x944d0 (<libc.so.6>)

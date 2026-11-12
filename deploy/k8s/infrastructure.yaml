@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: Service
+metadata: {name: etcd}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: etcd}
+  ports: [{name: service, port: 2379, targetPort: 2379}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: etcd}
+spec:
+  replicas: 1
+  serviceName: etcd
+  podManagementPolicy: Parallel
+  selector: {matchLabels: {app: etcd}}
+  template:
+    metadata: {labels: {app: etcd}}
+    spec:
+      containers:
+        - name: etcd
+          image: fraud-ring-phase9
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 2379}]
+          command: ["etcd","--data-dir","/data/etcd","--listen-client-urls","http://0.0.0.0:2379","--advertise-client-urls","http://etcd:2379"]
+          volumeMounts: [{name: data, mountPath: /data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: broker}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: broker}
+  ports: [{name: service, port: 9092, targetPort: 9092}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: broker}
+spec:
+  replicas: 1
+  serviceName: broker
+  podManagementPolicy: Parallel
+  selector: {matchLabels: {app: broker}}
+  template:
+    metadata: {labels: {app: broker}}
+    spec:
+      securityContext: {fsGroup: 101}
+      containers:
+        - name: broker
+          image: docker.redpanda.com/redpandadata/redpanda:v24.3.9
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 9092}]
+          args: ["redpanda","start","--overprovisioned","--smp","1","--memory","384M","--reserve-memory","0M","--node-id","0","--check=false","--kafka-addr","0.0.0.0:9092","--advertise-kafka-addr","broker:9092"]
+          volumeMounts: [{name: data, mountPath: /var/lib/redpanda/data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: placement}
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: placement
+          image: fraud-ring-phase9
+          imagePullPolicy: IfNotPresent
+          command: [python3, /config/placement.py]
+          env: [{name: REPLICA_TEMPLATE, value: "shard-{s}-{i}.shard-{s}:5100"}]
+          volumeMounts: [{name: config, mountPath: /config}]
+      volumes: [{name: config, configMap: {name: placement}}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: topic}
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topic
+          image: docker.redpanda.com/redpandadata/redpanda:v24.3.9
+          imagePullPolicy: IfNotPresent
+          command: [sh, -ec]
+          args:
+            - |
+              until rpk cluster info -X brokers=broker:9092; do sleep 2; done
+              rpk topic create fraud-mutations -p 8 -r 1 -X brokers=broker:9092 || rpk topic describe fraud-mutations -X brokers=broker:9092
