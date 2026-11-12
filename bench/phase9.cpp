@@ -40,17 +40,19 @@ struct BatchDsu {
         return Aggregate{size[root(u)]};
     }
 };
-struct Op { char kind; unsigned index; };
+struct Op { char kind; unsigned index; Time expiry{}; };
 struct Trace {
     std::vector<Link> edges;
     std::vector<Op> ops;
     std::vector<Id> vertices;
+    unsigned initial_edges{}, final_edges{};
+    bool windowed{};
     Trace(unsigned n,std::string topology,unsigned cuts,unsigned rounds) {
         std::mt19937 rng(9173);
         vertices.resize(n);
         std::iota(vertices.begin(),vertices.end(),0);
         std::vector<unsigned> bridges,leaves;
-        unsigned width=topology=="sweep"?250:n;
+        unsigned width=topology=="bridge"?n:250;
         for(unsigned base=0;base<n;base+=width) {
             unsigned limit=std::min(n,base+width),mid=(base+limit)/2;
             // Two sparse halves, one central bridge and a pendant expiry edge.
@@ -70,9 +72,43 @@ struct Trace {
             bridges.push_back(edges.size()); edges.push_back({base,mid});
             leaves.push_back(edges.size()); edges.push_back({mid,limit-1});
         }
+        initial_edges=final_edges=edges.size();
+        if(topology!="sweep" && topology!="bridge") {
+            // One logical tick is 1 ms. Hold new chords for a fixed number of
+            // ticks, expire the oldest window in handle order, then admit arrivals.
+            windowed=true;
+            const unsigned lifetime=topology=="ttl-40ms"?40:10;
+            const unsigned arrivals=topology=="rate-10"?10:5;
+            const unsigned extensions=topology=="repeat90"?18*arrivals:arrivals;
+            std::vector<unsigned> degree_pool;
+            for(auto [u,v]:edges) {
+                degree_pool.push_back(u);
+                degree_pool.push_back(v);
+            }
+            std::vector<std::vector<unsigned>> wheel(lifetime);
+            for(unsigned tick=0;tick<200;++tick) {
+                auto& due=wheel[tick%lifetime];
+                for(auto h:due)ops.push_back({'x',h,tick+1});
+                due.clear();
+                for(unsigned j=0;j<arrivals;++j) {
+                    unsigned u=topology=="power-law"?degree_pool[rng()%degree_pool.size()]:rng()%n;
+                    unsigned v=(u+1+rng()%(n-1))%n;
+                    due.push_back(edges.size());
+                    ops.push_back({'i',static_cast<unsigned>(edges.size()),tick+lifetime+1});
+                    edges.push_back({u,v});
+                }
+                for(unsigned j=0;j<extensions;++j)
+                    ops.push_back({'t',static_cast<unsigned>(rng()%initial_edges),(Time{1}<<40)+ops.size()+2});
+            }
+            // Drain remaining windows so repeat90 has exactly 18 renewals
+            // for every insertion and expiration pair, including the tail.
+            for(unsigned tick=200;tick<200+lifetime;++tick)
+                for(auto h:wheel[tick%lifetime])ops.push_back({'x',h,tick+1});
+            return;
+        }
         for(unsigned window=0;window<rounds;++window) {
             // Each 1000 mutations contains exactly cuts manual tree deletions.
-            unsigned expiries=topology=="repeat90"?50:20;
+            unsigned expiries=20;
             std::vector<char> actions(cuts,'d');
             actions.insert(actions.end(),expiries,'x');
             actions.resize(1000-cuts-expiries,'t');
@@ -92,24 +128,26 @@ template<class E> Id measure(const Trace& t,E& e,const std::string& label,const 
         auto [u,v]=t.edges[h];
         return e.insert_edge(h+1,t.vertices[u],t.vertices[v],time);
     };
-    for(unsigned h=0;h<t.edges.size();++h)add(h,1);
+    for(unsigned h=0;h<t.initial_edges;++h)add(h,t.windowed?Time{1}<<40:1);
     std::vector<double> samples; samples.reserve(t.ops.size()*2);
     Id checksum=0,step=0,manual=0;
     auto start=Clock::now();
     auto record=[&](Clock::time_point begin) {
         samples.push_back(std::chrono::duration<double,std::nano>(Clock::now()-begin).count());
     };
-    for(auto [k,h]:t.ops) {
+    for(auto [k,h,expiry]:t.ops) {
         auto begin=Clock::now();
         Status status;
         switch(k) {
-        case 'i': status=add(h,step+2); break;
-        case 't': status=e.extend_ttl(h+1,step+2); break;
+        case 'i': status=add(h,expiry?expiry:step+2); break;
+        case 't': status=e.extend_ttl(h+1,expiry?expiry:step+2); break;
         default: status=e.delete_edge(h+1,k=='d'?Removal::manual:Removal::expiry); manual+=k=='d';
         }
         record(begin);
         if(status!=Status::ok)throw std::runtime_error("mutation rejected");
-        if(step++%16==0) {
+        ++step;
+        bool window_end=t.windowed && k=='x' && (step==t.ops.size() || t.ops[step].kind!='x' || t.ops[step].expiry!=expiry);
+        if(window_end || ((step-1)%16==0 && !(t.windowed && k=='x'))) {
             auto v=t.vertices[t.edges[h].v];
             // BatchDsu uses dense indices internally.
             if constexpr(std::is_same_v<E,BatchDsu>)v=t.edges[h].v;
@@ -135,7 +173,7 @@ template<class E> Id measure(const Trace& t,E& e,const std::string& label,const 
         promotions=c.tree_promotions+c.nontree_promotions; replacements=c.replacements;
         storage=e.storage_bytes(); slab=e.slab_bytes();
     }
-    std::cout<<topology<<','<<label<<','<<t.vertices.size()<<','<<t.edges.size()<<','<<cuts/10.<<','<<manual
+    std::cout<<topology<<','<<label<<','<<t.vertices.size()<<','<<t.final_edges<<','<<cuts/10.<<','<<manual
         <<','<<t.ops.size()<<','<<samples.size()<<','<<samples.size()/seconds<<','<<q(.5)<<','<<q(.99)<<','<<q(.999)
         <<','<<repairs<<','<<scanned<<','<<candidates<<','<<levels<<','<<promotions<<','<<replacements<<','<<storage<<','<<slab<<','<<checksum<<'\n';
     return checksum;
@@ -161,8 +199,11 @@ int main(int argc,char** argv) {
         if(argc==1 || std::string(argv[1])=="HDT") {HdtEngine c(n); sums.push_back(measure(t,c,"HDT",topology,cuts));}
         if(!std::all_of(sums.begin(),sums.end(),[&](Id x){return x==sums.front();}))throw std::runtime_error("component checksum mismatch");
     };
-    if(argc>1){run("sweep",50000,50,500,false);return 0;}
-    for(auto name:{"sparse","power-law","bridge","repeat90"})
+    if(argc>1){
+        for(unsigned trial=0;trial<16;++trial)run("sweep",50000,50,500,false);
+        return 0;
+    }
+    for(auto name:{"sparse","power-law","bridge","repeat90","ttl-40ms","rate-10"})
         run(name,1000,std::string(name)=="bridge"?100:0,20,true);
     for(unsigned pct:{0,1,5,10,20,50,100})run("sweep",50000,pct,40,false);
 }
