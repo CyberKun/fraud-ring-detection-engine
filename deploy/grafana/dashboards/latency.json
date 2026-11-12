@@ -1,0 +1,39 @@
+{
+  "uid": "ringwatch",
+  "title": "Replica latency",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "WAL fsync · p99",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fraud-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(wal_fsync_latency_seconds_bucket[2m])))",
+          "legendFormat": "p99 fsync"
+        }
+      ]
+    }
+  ]
+}

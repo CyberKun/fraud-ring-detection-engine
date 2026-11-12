@@ -1,6 +1,25 @@
 # Milestone status
 
-Phase 7 passed the four-shard routing, Kafka durability and redelivery gate. Phases 8 and 9 are unfinished.
+Phase 8 passed the gateway and operations console gate. Phase 9 is unfinished.
+
+## Phase 8 verification
+
+The browser exercised the production console and gateway on one Docker Compose host with four shards and twelve replicas. Seeding through the Router delivered a live WebSocket alert. The browser checked the three entity colors and flagged-account ring on the Canvas, moved the audit slider across the first alert, and checked the embedded Grafana panel and all twelve Prometheus replica targets.
+
+```text
+$ FRAUD_TEST_BROKERS=broker:9092 ctest --output-on-failure
+100% tests passed, 0 tests failed out of 51
+Total Test time (real) = 80.69 sec
+
+$ python -u bench/phase8_e2e.py --failover --canvas-limit
+websocket_alert=passed accounts=7 flagged=2 volume=16905
+explorer_canvas=10_vertices 20_edges entity_colors=3 flagged_ring=passed truncation=3_of_10
+audit_slider=passed first_crossing=exact shards=4 replicas=12 prometheus_targets=12 grafana_panel=passed
+kill_leader=passed shard=0 old_epoch=16 new_epoch=18
+canvas_cap=2000/2001 truncation_banner=passed median_frame_ms=16.7 p95_frame_ms=33.4
+```
+
+The chaos control stopped the active shard-0 leader. The gate observed the successor, restarted the stopped replica and waited for healthy membership. The Canvas limit test ingested a separate 2,001-vertex component through Kafka, checked the “+1 more vertices” banner and sampled 60 browser animation-frame intervals.
 
 ## Phase 7 verification
 

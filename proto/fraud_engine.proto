@@ -21,9 +21,13 @@ message AlertEvent { uint64 tenant_id=1; uint64 vertex_id=2; uint64 epoch=3; uin
 message AuditAtRequest { uint64 tenant_id=1; uint64 vertex_id=2; uint64 timestamp_ms=3; uint32 max_nodes=4; optional uint64 min_lsn=5; }
 message AuditAtResponse { ComponentStatsResponse stats=1; SubgraphResponse subgraph=2; optional uint64 first_alert_timestamp_ms=3; uint64 applied_lsn=4; string replica_role=5; }
 message HealthRequest {bool checksum=1; }
-message ShardHealth { uint32 shard_id=1; string replica_role=2; uint64 epoch=3; uint64 applied_lsn=4; uint64 lag=5; double ingestion_rate=6; uint64 last_entry_epoch=7; uint64 last_lsn=8; uint64 commit_lsn=9; uint64 truncations=10; string checksum=11; string log_hash=12; uint64 fetched_frames=13; }
+message MemberHealth { string address=1; string replica_role=2; uint64 applied_lsn=3; uint64 epoch=4; uint64 lag=5; }
+message DevStopRequest { uint32 shard_id=1; uint64 epoch=2; }
+message DevStopResponse { uint64 epoch=1; }
+message ShardHealth { repeated MemberHealth members=14; uint32 shard_id=1; string replica_role=2; uint64 epoch=3; uint64 applied_lsn=4; uint64 lag=5; double ingestion_rate=6; uint64 last_entry_epoch=7; uint64 last_lsn=8; uint64 commit_lsn=9; uint64 truncations=10; string checksum=11; string log_hash=12; uint64 fetched_frames=13; }
 message ClusterHealthResponse { repeated ShardHealth shards=1; }
 service FraudEngine {
+ rpc DevStopLeader(DevStopRequest) returns (DevStopResponse);
  rpc UpsertEdge(UpsertEdgeRequest) returns (MutationResponse);
  rpc DeleteEdge(DeleteEdgeRequest) returns (MutationResponse);
  rpc UpdateVertex(UpdateVertexRequest) returns (MutationResponse);
@@ -40,7 +44,7 @@ enum PeerOp { PROMISE=0; PROBE=1; FETCH=2; APPEND=3; TRUNCATE=4; COMMIT=5; }
 message PeerRequest { uint64 shard=1; string owner=2; uint64 epoch=3; PeerOp op=4;
  uint64 index=5; Mark previous=6; Mark boundary=7; bytes frame=8; uint64 leader_lsn=9; }
 message PeerReply { Mark tail=1; Mark committed=2; Mark boundary=3; bytes frame=4; }
-service ReplicaPeer { rpc Exchange(PeerRequest) returns (PeerReply); }
+service ReplicaPeer { rpc DevStopLeader(DevStopRequest) returns (DevStopResponse); rpc Exchange(PeerRequest) returns (PeerReply); }
 
 message KafkaMutation {
   oneof command {

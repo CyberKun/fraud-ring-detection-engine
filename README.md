@@ -113,3 +113,32 @@ docker compose -f compose.phase7.yml down
 ```
 
 The same test is registered with CTest as `Sharding.FourShardKafka`. Set `FRAUD_TEST_BROKERS` to run it against a reachable broker. It creates a unique topic and consumer group.
+
+### Operations console
+
+Run `docker compose up -d --build` and open [Ringwatch](http://localhost:8180). Compose starts four groups of three replicas, the Router, etcd, Redpanda, Prometheus, Grafana, the gateway and the production Vite build. Only the console port is published, on loopback. Set `CONSOLE_PORT` to change it.
+
+In **Live alerts**, wait for the stream to connect and choose **Seed demo ring**. The generator submits seven accounts, two shared cards, one shared device and transfers to the Router. Select the alert to inspect its Canvas graph. **Audit time travel** opens at its event timestamp. The feed retains the newest 200 events received in the current browser session. Reconnecting starts a new live subscription.
+
+All data requests from the gateway use the Router gRPC service. IDs, timestamps, volumes and LSNs retain their unsigned 64-bit precision as decimal strings.
+
+| Endpoint | Operation |
+| --- | --- |
+| `GET /api/components/:tenant/:vertex/stats` | Component stats and observed lag in records relative to a subsequent leader sample |
+| `GET /api/components/:tenant/:vertex/subgraph?max_nodes=2000` | Bounded component graph |
+| `GET /api/audit/:tenant/:vertex?timestamp_ms=…&max_nodes=2000` | Historical graph, stats and first alert crossing |
+| `GET /api/cluster/health` | Shard and replica topology |
+| `WS /api/alerts/stream?tenant=1` | JSON packets with type `ready` or `alert`; alert packets carry the Router event in `event` |
+| `POST /api/dev/seed-demo` | Seed the tenant given in the JSON body (default tenant 1) |
+| `POST /api/dev/kill-leader/:shard` | Stop the elected replica process; an optional JSON `epoch` fences the request |
+
+Component and audit reads accept an optional `min_lsn`. The local Compose demo enables the development controls. Set `FRAUD_DEV_MODE=0` before starting Compose to disable them at both gateway and replica. A stopped replica can rejoin with `docker compose start s0r0` (use the member address shown on the shard card).
+
+```sh
+docker compose exec -w /workspace/build -e FRAUD_TEST_BROKERS=broker:9092 router ctest --output-on-failure
+python -m pip install playwright
+python -m playwright install chromium
+python bench/phase8_e2e.py --failover --canvas-limit
+```
+
+The browser gate uses the running Compose stack. The optional failover check restores the stopped member. The canvas-limit check writes a 2,001-account chain to a fresh tenant through Kafka and measures 60 browser frame intervals on the bounded graph.

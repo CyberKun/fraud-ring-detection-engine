@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: fraud-replicas
+    static_configs:
+      - targets: ["s0r0:9100", "s0r1:9100", "s0r2:9100", "s1r0:9100", "s1r1:9100", "s1r2:9100", "s2r0:9100", "s2r1:9100", "s2r2:9100", "s3r0:9100", "s3r1:9100", "s3r2:9100"]

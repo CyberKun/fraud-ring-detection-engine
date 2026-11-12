@@ -1,0 +1,128 @@
+name: ringwatch
+x-engine: &engine
+  image: fraud-ring-phase8
+  pull_policy: never
+x-replica: &replica
+  <<: *engine
+  init: true
+  depends_on:
+    placement: {condition: service_completed_successfully}
+    topic: {condition: service_completed_successfully}
+  environment:
+    FRAUD_DEV_MODE: ${FRAUD_DEV_MODE:-1}
+    FRAUD_KAFKA_BROKERS: broker:9092
+services:
+  etcd:
+    <<: *engine
+    command: [etcd, --data-dir, /data, --listen-client-urls, "http://0.0.0.0:2379", --advertise-client-urls, "http://etcd:2379"]
+    volumes: [etcd-data:/data]
+  broker:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.9
+    command: [redpanda, start, --overprovisioned, --smp, "1", --memory, 384M, --reserve-memory, 0M, --node-id, "0", --check=false, --kafka-addr, "0.0.0.0:9092", --advertise-kafka-addr, "broker:9092"]
+    volumes: [kafka-data:/var/lib/redpanda/data]
+    healthcheck:
+      test: [CMD, rpk, cluster, info, -X, brokers=broker:9092]
+      interval: 2s
+      timeout: 5s
+      retries: 40
+  topic:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.9
+    depends_on:
+      broker: {condition: service_healthy}
+    entrypoint: [sh, -ec]
+    command: ["rpk topic create fraud-mutations -p 8 -r 1 -X brokers=broker:9092 || rpk topic describe fraud-mutations -X brokers=broker:9092"]
+  placement:
+    <<: *engine
+    depends_on: [etcd]
+    volumes: [./deploy/placement.py:/init.py:ro]
+    command: [python3, /init.py]
+  router:
+    image: fraud-ring-phase8
+    build: {context: ., dockerfile: Dockerfile.dev}
+    depends_on:
+      placement: {condition: service_completed_successfully}
+    command: [./build/fraud_router, "http://etcd:2379", "0.0.0.0:5200"]
+  gateway:
+    build: {context: ., dockerfile: gateway/Dockerfile}
+    depends_on: [router]
+    environment: {ROUTER_ADDRESS: "router:5200", FRAUD_DEV_MODE: "${FRAUD_DEV_MODE:-1}"}
+  console:
+    build: {context: ., dockerfile: console/Dockerfile}
+    depends_on: [gateway, grafana]
+    ports: ["127.0.0.1:${CONSOLE_PORT:-8180}:80"]
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes: [./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+  grafana:
+    image: grafana/grafana:11.5.2
+    depends_on: [prometheus]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes: [./deploy/grafana/provisioning:/etc/grafana/provisioning:ro, ./deploy/grafana/dashboards:/dashboards:ro]
+  s0r0:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "0", "0", "http://etcd:2379", "3", "1000", "s0r0:5100", "s0r1:5100", "s0r2:5100", "9100"]
+    volumes: [s0r0-data:/data]
+  s0r1:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "0", "1", "http://etcd:2379", "3", "1000", "s0r0:5100", "s0r1:5100", "s0r2:5100", "9100"]
+    volumes: [s0r1-data:/data]
+  s0r2:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "0", "2", "http://etcd:2379", "3", "1000", "s0r0:5100", "s0r1:5100", "s0r2:5100", "9100"]
+    volumes: [s0r2-data:/data]
+  s1r0:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "1", "0", "http://etcd:2379", "3", "1000", "s1r0:5100", "s1r1:5100", "s1r2:5100", "9100"]
+    volumes: [s1r0-data:/data]
+  s1r1:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "1", "1", "http://etcd:2379", "3", "1000", "s1r0:5100", "s1r1:5100", "s1r2:5100", "9100"]
+    volumes: [s1r1-data:/data]
+  s1r2:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "1", "2", "http://etcd:2379", "3", "1000", "s1r0:5100", "s1r1:5100", "s1r2:5100", "9100"]
+    volumes: [s1r2-data:/data]
+  s2r0:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "2", "0", "http://etcd:2379", "3", "1000", "s2r0:5100", "s2r1:5100", "s2r2:5100", "9100"]
+    volumes: [s2r0-data:/data]
+  s2r1:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "2", "1", "http://etcd:2379", "3", "1000", "s2r0:5100", "s2r1:5100", "s2r2:5100", "9100"]
+    volumes: [s2r1-data:/data]
+  s2r2:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "2", "2", "http://etcd:2379", "3", "1000", "s2r0:5100", "s2r1:5100", "s2r2:5100", "9100"]
+    volumes: [s2r2-data:/data]
+  s3r0:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "3", "0", "http://etcd:2379", "3", "1000", "s3r0:5100", "s3r1:5100", "s3r2:5100", "9100"]
+    volumes: [s3r0-data:/data]
+  s3r1:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "3", "1", "http://etcd:2379", "3", "1000", "s3r0:5100", "s3r1:5100", "s3r2:5100", "9100"]
+    volumes: [s3r1-data:/data]
+  s3r2:
+    <<: *replica
+    command: [./build/fraud_replica, /data, "3", "2", "http://etcd:2379", "3", "1000", "s3r0:5100", "s3r1:5100", "s3r2:5100", "9100"]
+    volumes: [s3r2-data:/data]
+volumes:
+  etcd-data: {}
+  kafka-data: {}
+  s0r0-data: {}
+  s0r1-data: {}
+  s0r2-data: {}
+  s1r0-data: {}
+  s1r1-data: {}
+  s1r2-data: {}
+  s2r0-data: {}
+  s2r1-data: {}
+  s2r2-data: {}
+  s3r0-data: {}
+  s3r1-data: {}
+  s3r2-data: {}

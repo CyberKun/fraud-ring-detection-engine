@@ -138,6 +138,16 @@ class Router final : public rpc::FraudEngine::Service {
                                       rpc::SubgraphResponse *out) override {
         return read(ctx, req, out, &Stub::GetComponentSubgraph);
     }
+    grpc::Status DevStopLeader(grpc::ServerContext* ctx,const rpc::DevStopRequest* req,rpc::DevStopResponse* out) override {
+        try {
+            auto map=directory_.get(true);
+            const auto& leader=map->leaders.at(req->shard_id());
+            if(req->epoch()!=leader.epoch)return {Code::FAILED_PRECONDITION,"refresh shard health"};
+            auto stub=rpc::ReplicaPeer::NewStub(grpc::CreateChannel(leader.address,grpc::InsecureChannelCredentials()));
+            grpc::ClientContext call;call.set_deadline(ctx->deadline());
+            return stub->DevStopLeader(&call,*req,out);
+        }catch(const std::exception& e){return {Code::UNAVAILABLE,e.what()};}
+    }
     grpc::Status GetClusterHealth(grpc::ServerContext *ctx, const rpc::HealthRequest *req,
                                   rpc::ClusterHealthResponse *out) override {
         try {
@@ -146,11 +156,20 @@ class Router final : public rpc::FraudEngine::Service {
                 auto *state = out->add_shards();
                 state->set_shard_id(shard);
                 state->set_replica_role("UNAVAILABLE");
-                if (auto elected = map->leaders.find(shard); elected != map->leaders.end()) {
-                    auto h = health(elected->second.address, ctx->deadline(), req->checksum());
-                    if (h && h->shard_id() == shard && h->epoch() == elected->second.epoch &&
-                        h->replica_role() == "LEADER")
-                        *state = *h;
+                auto elected=map->leaders.find(shard);
+                std::vector<rpc::MemberHealth> observations;
+                for(const auto& address:members){
+                    auto& m=observations.emplace_back();
+                    m.set_address(address);m.set_replica_role("UNAVAILABLE");
+                    auto h=health(address,ctx->deadline(),req->checksum());
+                    if(!h || h->shard_id()!=shard)continue;
+                    m.set_replica_role(h->replica_role());m.set_epoch(h->epoch());m.set_applied_lsn(h->applied_lsn());
+                    if(elected!=map->leaders.end() && elected->second.address==address &&
+                       h->epoch()==elected->second.epoch && h->replica_role()=="LEADER") *state=*h;
+                }
+                for(auto& m:observations){
+                    m.set_lag(state->applied_lsn()>m.applied_lsn()?state->applied_lsn()-m.applied_lsn():0);
+                    *state->add_members()=m;
                 }
             }
             return grpc::Status::OK;

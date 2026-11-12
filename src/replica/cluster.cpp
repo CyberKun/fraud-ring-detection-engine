@@ -1,5 +1,6 @@
 #include "replica/cluster.hpp"
 #include <fstream>
+#include <csignal>
 #include <iostream>
 
 namespace fraud::replica {
@@ -123,6 +124,17 @@ void Cluster::handle(const Request &q, Reply &r) {
     auto s = journal_.state();
     put(r.mutable_tail(), s.tail);
     put(r.mutable_committed(), s.commit);
+}
+grpc::Status Cluster::DevStopLeader(grpc::ServerContext*,const rpc::DevStopRequest* r,rpc::DevStopResponse* out) {
+    if(!std::getenv("FRAUD_DEV_MODE") || std::string_view(std::getenv("FRAUD_DEV_MODE"))!="1")
+        return {grpc::StatusCode::PERMISSION_DENIED,"dev mode disabled"};
+    try {
+        if(r->shard_id()!=shard_ || !owns_epoch(r->epoch()))
+            return {grpc::StatusCode::FAILED_PRECONDITION,"leadership changed"};
+        out->set_epoch(r->epoch());
+        std::thread([]{std::this_thread::sleep_for(150ms);std::raise(SIGTERM);}).detach();
+        return grpc::Status::OK;
+    }catch(const std::exception& e){return {grpc::StatusCode::UNAVAILABLE,e.what()};}
 }
 grpc::Status Cluster::Exchange(grpc::ServerContext *, const Request *q, Reply *r) {
     try {

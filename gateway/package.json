@@ -1,0 +1,14 @@
+{
+  "name": "fraud-console-gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.13.4",
+    "@grpc/proto-loader": "0.7.15",
+    "express": "5.1.0",
+    "ws": "8.18.3"
+  }
+}

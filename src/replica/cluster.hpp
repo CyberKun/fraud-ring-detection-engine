@@ -25,6 +25,7 @@ class Cluster final : public service::Replication, public rpc::ReplicaPeer::Serv
                             std::size_t bytes = sizeof(Command)) override;
     std::unique_lock<std::mutex> read_guard(Id, std::string &) override;
     void health(rpc::ShardHealth &, bool) override;
+    grpc::Status DevStopLeader(grpc::ServerContext*,const rpc::DevStopRequest*,rpc::DevStopResponse*) override;
     grpc::Status Exchange(grpc::ServerContext *, const rpc::PeerRequest *, rpc::PeerReply *) override;
 
   private:
