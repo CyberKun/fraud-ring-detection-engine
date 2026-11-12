@@ -1,5 +1,7 @@
 # Streaming fraud-ring detection engine
 
+![CI](https://github.com/CyberKun/fraud-ring-detection-engine/actions/workflows/ci.yml/badge.svg)
+
 Shared cards, devices and transactions connect accounts in a per-tenant graph. The live service maintains component size, volume and flagged-account counts as links change or expire. An investigator can follow an alert to the current graph or reconstruct the component at its first historical alert crossing.
 
 ```mermaid

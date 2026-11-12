@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: C++20 Build, Unit Tests & Differential Fuzzers
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build dev container image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.dev
+          tags: fraud-engine-dev:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure and compile C++20 engine (Release)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work fraud-engine-dev:ci \
+            bash -c "cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build"
+
+      - name: Run CTest unit & storage recovery tests
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work fraud-engine-dev:ci \
+            ctest --test-dir build --output-on-failure -E "FourShardKafka"
+
+      - name: Run Tier-1 differential fuzzers (Engine A, LCT-MSF & HDT vs Oracle)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work fraud-engine-dev:ci \
+            bash -c "./build/phase2_check differential && ./build/phase3_fuzz tier1 && ./build/phase4_fuzz tier1 && ./build/phase5_determinism"
+
+  frontend-typecheck:
+    name: Console UI Typecheck & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: console
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install dependencies and build production bundle
+        run: |
+          npm ci
+          npm run build
